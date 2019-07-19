@@ -39,7 +39,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         batch_size = batch_end - batch_start
         spectrograms_as_images = np.empty((batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
                                           dtype=np.float32)
-        targets = np.zeros(shape=(batch_size,), dtype=np.int32)
+        targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
             spectrogram = SoundRecognizer.sound_to_melspectrogram(
                 sound=self.X[sample_idx], sampling_frequency=self.sampling_frequency, melfb=self.melfb,
@@ -50,7 +50,7 @@ class TrainsetGenerator(keras.utils.Sequence):
             spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
             spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
             spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
-            targets[sample_idx - batch_start] = self.classes[self.y[sample_idx]]
+            targets[sample_idx - batch_start][self.classes[self.y[sample_idx]]] = 1.0
         if self.sample_weight is None:
             return spectrograms_as_images, targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
