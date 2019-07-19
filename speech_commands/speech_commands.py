@@ -149,7 +149,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(self.recognizer_.get_layer('MobileNetV2_Base')(input_data))
+            )(self.recognizer_.get_layer('MobileNet_Base')(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer='adam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
@@ -159,10 +159,10 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.classes_reverse_ = classes_dict_reverse
             self.max_spectrogram_size_ = lengths_of_spectrograms[int(round((n_train - 1) * 0.98))]
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
-            mobilenet = keras.applications.mobilenet_v2.MobileNetV2(
+            mobilenet = keras.applications.mobilenet.MobileNet(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), alpha=1.0, depth_multiplier=1, include_top=False,
                 weights='imagenet', input_tensor=input_data, pooling='max')
-            mobilenet.name = 'MobileNetV2_Base'
+            mobilenet.name = 'MobileNet_Base'
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
