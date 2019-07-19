@@ -85,7 +85,7 @@ def main():
             recognizer = pickle.load(fp)
     else:
         recognizer = SoundRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
-                                     batch_size=32, max_epochs=100, patience=3, verbose=True, warm_start=False,
+                                     batch_size=8, max_epochs=100, patience=3, verbose=True, warm_start=False,
                                      random_seed=42)
         recognizer.fit(sounds_for_training, labels_for_training,
                        validation_data=(sounds_for_testing, labels_for_testing))
