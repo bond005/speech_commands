@@ -18,7 +18,7 @@ from sklearn.utils.validation import check_is_fitted
 class TrainsetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
                  batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
-                 max_spectrogram_len: int, sample_weight: Union[list, tuple, np.ndarray, None]=None):
+                 max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None):
         self.X = X
         self.y = y
         self.sample_weight = sample_weight
@@ -28,6 +28,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.shift_size = shift_size
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
+        self.classes = classes
 
     def __len__(self):
         return int(np.ceil(len(self.y) / float(self.batch_size)))
@@ -49,7 +50,7 @@ class TrainsetGenerator(keras.utils.Sequence):
             spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
             spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
             spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
-            targets[sample_idx - batch_start] = self.y[sample_idx]
+            targets[sample_idx - batch_start] = self.classes[self.y[sample_idx]]
         if self.sample_weight is None:
             return spectrograms_as_images, targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
@@ -177,7 +178,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         trainset_generator = TrainsetGenerator(
             X=X, y=y, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
-            sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None
+            classes=self.classes_, sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None
         )
         if (X_val is None) or (y_val is None):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
@@ -186,7 +187,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             validset_generator = TrainsetGenerator(
                 X=X_val, y=y_val, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
                 melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
-                sampling_frequency=self.sampling_frequency,
+                sampling_frequency=self.sampling_frequency, classes=self.classes_,
                 sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
