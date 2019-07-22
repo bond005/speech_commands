@@ -1,5 +1,6 @@
 import copy
 import os
+import pickle
 import random
 import tempfile
 import time
@@ -18,7 +19,8 @@ from sklearn.utils.validation import check_is_fitted
 class TrainsetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
                  batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
-                 max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None):
+                 max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
+                 cache_dir_name: Union[str, None]=None):
         self.X = X
         self.y = y
         self.sample_weight = sample_weight
@@ -30,6 +32,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.melfb = melfb
         self.classes = classes
         self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
+        self.cache_dir_name = None if cache_dir_name is None else os.path.normpath(cache_dir_name)
 
     def __len__(self):
         return int(np.ceil(len(self.indices) / float(self.batch_size)))
@@ -38,20 +41,30 @@ class TrainsetGenerator(keras.utils.Sequence):
         batch_start = idx * self.batch_size
         batch_end = min((idx + 1) * self.batch_size, len(self.y))
         batch_size = batch_end - batch_start
-        spectrograms_as_images = np.empty((batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
-                                          dtype=np.float32)
-        targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
-        for sample_idx in range(batch_start, batch_end):
-            spectrogram = SoundRecognizer.sound_to_melspectrogram(
-                sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency, melfb=self.melfb,
-                window_size=self.window_size, shift_size=self.shift_size
-            )
-            r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
-                                                              max_spectrogram_size=self.max_spectrogram_len)
-            spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
-            spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
-            spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
-            targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
+        if (self.cache_dir_name is None) or \
+                (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}.pkl'.format(idx)))):
+            spectrograms_as_images = np.empty(
+                (batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
+                dtype=np.float32)
+            targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
+            for sample_idx in range(batch_start, batch_end):
+                spectrogram = SoundRecognizer.sound_to_melspectrogram(
+                    sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency,
+                    melfb=self.melfb,
+                    window_size=self.window_size, shift_size=self.shift_size
+                )
+                r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
+                                                                  max_spectrogram_size=self.max_spectrogram_len)
+                spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
+                spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
+                spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
+                targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
+            if self.cache_dir_name is not None:
+                with open(os.path.join(self.cache_dir_name, 'batch_{0}.pkl'.format(idx)), 'wb') as fp:
+                    pickle.dump((spectrograms_as_images, targets), fp)
+        else:
+            with open(os.path.join(self.cache_dir_name, 'batch_{0}.pkl'.format(idx)), 'rb') as fp:
+                spectrograms_as_images, targets = pickle.load(fp)
         if self.sample_weight is None:
             return spectrograms_as_images, targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
