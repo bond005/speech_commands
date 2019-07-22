@@ -484,6 +484,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                     np.zeros((max_spectrogram_size - normalized.shape[0], normalized.shape[1]), dtype=normalized.dtype)
                 )
             )
+        elif normalized.shape[0] > max_spectrogram_size:
+            normalized = normalized[0:max_spectrogram_size]
         if max_spectrogram_size < SoundRecognizer.IMAGESIZE[0]:
             normalized = np.vstack(
                 (
