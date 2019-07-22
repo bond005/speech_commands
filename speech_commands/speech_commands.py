@@ -98,8 +98,9 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
     COLORMAP = cm.get_cmap('jet')
     IMAGESIZE = (224, 224)
 
-    def __init__(self, sampling_frequency: int, window_size: float, shift_size: float, batch_size: int, max_epochs: int,
-                 patience: int, verbose: bool=False, warm_start: bool=False, random_seed=None):
+    def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
+                 batch_size: int=32, max_epochs: int=100, patience: int=5, verbose: bool=False, warm_start: bool=False,
+                 random_seed=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
@@ -246,10 +247,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             tf.random.set_random_seed(self.random_seed)
 
     def update_triangle_filters(self):
-        n_window = int(round(self.sampling_frequency * self.window_size))
-        n_fft = 2
-        while n_fft < n_window:
-            n_fft *= 2
+        n_fft = self.get_n_fft(self.sampling_frequency, self.window_size)
         if hasattr(self, 'melfb_'):
             del self.melfb_
         self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1])
@@ -377,9 +375,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                                 melfb: np.ndarray) -> np.ndarray:
         n_window = int(round(sampling_frequency * window_size))
         n_shift = int(round(sampling_frequency * shift_size))
-        n_fft = 2
-        while n_fft < n_window:
-            n_fft *= 2
+        n_fft = SoundRecognizer.get_n_fft(sampling_frequency, window_size)
         specgram = librosa.core.stft(y=sound, n_fft=n_fft, hop_length=n_shift, win_length=n_window, window='hamming')
         specgram = np.asarray(np.absolute(specgram), dtype=np.float64)
         return np.dot(melfb, specgram).transpose()
@@ -523,10 +519,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                     (not isinstance(kwargs['random_seed'], np.uint32)):
                 raise ValueError('`random_seed` is wrong! Expected `{0}`, got `{1}`.'.format(
                     type(3), type(kwargs['random_seed'])))
-        n_fft = 2
-        while n_fft < n_window:
-            n_fft *= 2
-        if SoundRecognizer.IMAGESIZE[1] >= (n_fft // 3):
+        n_fft = SoundRecognizer.get_n_fft(kwargs['sampling_frequency'], kwargs['window_size'])
+        if SoundRecognizer.IMAGESIZE[1] >= (n_fft // 2):
             raise ValueError('`window_size` is too small for specified sampling frequency!')
 
     @staticmethod
@@ -554,8 +548,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if (not isinstance(y, list)) and (not isinstance(y, tuple)) and (not isinstance(y, np.ndarray)):
             raise ValueError('{0} is wrong type for `{1}`!'.format(type(y), y_name))
         if isinstance(y, np.ndarray):
-            if len(y.shape) != 2:
-                raise ValueError('`{0}` is wrong! Expected a 2-D array, but got a {1}-D one!'.format(
+            if len(y.shape) != 1:
+                raise ValueError('`{0}` is wrong! Expected a 1-D array, but got a {1}-D one!'.format(
                     y_name, len(y.shape)))
         if len(y) != n:
             raise ValueError('Size of `{0}` does not correspond to size of `{1}`. {2} != {3}'.format(
@@ -572,3 +566,11 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if n_classes < 2:
             raise ValueError('There are too few classes in the `{0}`!'.format(y_name))
         return classed_dict, classes_dict_reverse
+
+    @staticmethod
+    def get_n_fft(sampling_freq: int, window_size: float) -> int:
+        n_window = int(round(sampling_freq * window_size))
+        n_fft = 2
+        while n_fft < n_window:
+            n_fft *= 2
+        return n_fft
