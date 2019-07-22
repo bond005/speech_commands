@@ -93,6 +93,8 @@ def main():
                         help='The binary file with the speech classifier.')
     parser.add_argument('-d', '--data', dest='data_dir_name', type=str, required=True,
                         help='Path to the directory with labeled data of the TensorFlow Speech Recognition Challenge.')
+    parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False,
+                        help='Path to the directory with cached data.')
     cmd_args = parser.parse_args()
 
     data_for_training, data_for_validation, data_for_testing, fs = read_data(os.path.normpath(cmd_args.data_dir_name))

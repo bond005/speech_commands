@@ -20,7 +20,7 @@ class TrainsetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
                  batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
                  max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
-                 cache_dir_name: Union[str, None]=None):
+                 cache_dir_name: Union[str, None]=None, suffix: str=''):
         self.X = X
         self.y = y
         self.sample_weight = sample_weight
@@ -33,6 +33,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.classes = classes
         self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
         self.cache_dir_name = None if cache_dir_name is None else os.path.normpath(cache_dir_name)
+        self.suffix = suffix
 
     def __len__(self):
         return int(np.ceil(len(self.indices) / float(self.batch_size)))
@@ -42,7 +43,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         batch_end = min((idx + 1) * self.batch_size, len(self.y))
         batch_size = batch_end - batch_start
         if (self.cache_dir_name is None) or \
-                (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}.pkl'.format(idx)))):
+                (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
             spectrograms_as_images = np.empty(
                 (batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
                 dtype=np.float32)
@@ -60,10 +61,10 @@ class TrainsetGenerator(keras.utils.Sequence):
                 spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
                 targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
             if self.cache_dir_name is not None:
-                with open(os.path.join(self.cache_dir_name, 'batch_{0}.pkl'.format(idx)), 'wb') as fp:
+                with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'wb') as fp:
                     pickle.dump((spectrograms_as_images, targets), fp)
         else:
-            with open(os.path.join(self.cache_dir_name, 'batch_{0}.pkl'.format(idx)), 'rb') as fp:
+            with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
                 spectrograms_as_images, targets = pickle.load(fp)
         if self.sample_weight is None:
             return spectrograms_as_images, targets
@@ -120,7 +121,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
                  batch_size: int=32, max_epochs: int=100, patience: int=5, verbose: bool=False, warm_start: bool=False,
-                 random_seed=None):
+                 random_seed=None, cache_dir: Union[str, None]=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
@@ -130,12 +131,13 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.random_seed = random_seed
         self.warm_start = warm_start
         self.verbose = verbose
+        self.cache_dir = cache_dir
 
     def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed)
+                          random_seed=self.random_seed, cache_dir=self.cache_dir)
         classes_dict, classes_dict_reverse = self.check_Xy(X, 'X', y, 'y')
         n_train = len(y)
         if self.verbose:
@@ -199,7 +201,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         trainset_generator = TrainsetGenerator(
             X=X, y=y, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
-            classes=self.classes_, sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None
+            classes=self.classes_, sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None,
+            cache_dir_name=self.cache_dir, suffix='train'
         )
         if (X_val is None) or (y_val is None):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
@@ -230,7 +233,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 X=X_val, y=y_val, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
                 melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
                 sampling_frequency=self.sampling_frequency, classes=self.classes_,
-                sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None
+                sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None,
+                cache_dir_name=self.cache_dir, suffix='valid'
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True, monitor='val_loss', mode='min'
@@ -309,7 +313,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed)
+                          random_seed=self.random_seed, cache_dir=self.cache_dir)
         self.check_X(X, 'X')
         self.check_is_fitted()
         if not hasattr(self, 'melfb_'):
@@ -366,7 +370,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         return {'sampling_frequency': self.sampling_frequency, 'window_size': self.window_size,
                 'shift_size': self.shift_size, 'batch_size': self.batch_size, 'max_epochs': self.max_epochs,
                 'patience': self.patience, 'verbose': self.verbose, 'warm_start': self.warm_start,
-                'random_seed': self.random_seed}
+                'random_seed': self.random_seed, 'cache_dir': self.cache_dir}
 
     def set_params(self, **params):
         for parameter, value in params.items():
@@ -623,6 +627,12 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                     (not isinstance(kwargs['random_seed'], np.uint32)):
                 raise ValueError('`random_seed` is wrong! Expected `{0}`, got `{1}`.'.format(
                     type(3), type(kwargs['random_seed'])))
+        if 'cache_dir' not in kwargs:
+            raise ValueError('`cache_dir` is not specified!')
+        if kwargs['cache_dir'] is not None:
+            if (not hasattr(kwargs['cache_dir'], 'split')) or (not hasattr(kwargs['cache_dir'], 'strip')):
+                raise ValueError('`cache_dir` is wrong! Expected `{0}`, got `{1}`.'.format(
+                    type('3s'), type(kwargs['cache_dir'])))
         n_fft = SoundRecognizer.get_n_fft(kwargs['sampling_frequency'], kwargs['window_size'])
         if SoundRecognizer.IMAGESIZE[1] >= (n_fft // 2):
             raise ValueError('`window_size` is too small for specified sampling frequency!')
