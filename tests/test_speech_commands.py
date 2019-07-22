@@ -299,7 +299,7 @@ class TestSoundRecognizer(unittest.TestCase):
                 'X'
             )
 
-    def test_check_Xy_positive(self):
+    def test_check_Xy_positive01(self):
         res = SoundRecognizer.check_Xy(
             [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_train',
             ['sound' for _ in range(5)] + ['silence' for _ in range(3)] + [2 for _ in range(2)], 'y_train'
@@ -310,6 +310,18 @@ class TestSoundRecognizer(unittest.TestCase):
         self.assertIsInstance(res[1], list)
         self.assertEqual(res[0], {'sound': 0, 'silence': 1, 2: 2})
         self.assertEqual(res[1], ['sound', 'silence', 2])
+
+    def test_check_Xy_positive02(self):
+        res = SoundRecognizer.check_Xy(
+            [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_train',
+            ['sound' for _ in range(5)] + ['silence' for _ in range(3)] + [-1 for _ in range(2)], 'y_train'
+        )
+        self.assertIsInstance(res, tuple)
+        self.assertEqual(len(res), 2)
+        self.assertIsInstance(res[0], dict)
+        self.assertIsInstance(res[1], list)
+        self.assertEqual(res[0], {'sound': 0, 'silence': 1})
+        self.assertEqual(res[1], ['sound', 'silence'])
 
     def test_check_Xy_negative01(self):
         true_err_msg = re.escape('Size of `X_train` does not correspond to size of `y_train`. 10 != 11')
@@ -333,6 +345,14 @@ class TestSoundRecognizer(unittest.TestCase):
             _, _ = SoundRecognizer.check_Xy(
                 [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_test',
                 np.random.randint(0, 3, (10, 2)), 'y_test'
+            )
+
+    def test_check_Xy_negative04(self):
+        true_err_msg = re.escape('-2 is inadmissible value for `y_train`[8]!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            _, _ = SoundRecognizer.check_Xy(
+                [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_train',
+                ['sound' for _ in range(5)] + ['silence' for _ in range(3)] + [-2 for _ in range(2)], 'y_train'
             )
 
 

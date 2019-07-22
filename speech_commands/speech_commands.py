@@ -29,9 +29,10 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
         self.classes = classes
+        self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
 
     def __len__(self):
-        return int(np.ceil(len(self.y) / float(self.batch_size)))
+        return int(np.ceil(len(self.indices) / float(self.batch_size)))
 
     def __getitem__(self, idx):
         batch_start = idx * self.batch_size
@@ -42,7 +43,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
             spectrogram = SoundRecognizer.sound_to_melspectrogram(
-                sound=self.X[sample_idx], sampling_frequency=self.sampling_frequency, melfb=self.melfb,
+                sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency, melfb=self.melfb,
                 window_size=self.window_size, shift_size=self.shift_size
             )
             r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
@@ -50,18 +51,19 @@ class TrainsetGenerator(keras.utils.Sequence):
             spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
             spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
             spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
-            targets[sample_idx - batch_start][self.classes[self.y[sample_idx]]] = 1.0
+            targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
         if self.sample_weight is None:
             return spectrograms_as_images, targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
-            sample_weights[sample_idx - batch_start] = self.sample_weight[sample_idx]
+            sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
         return spectrograms_as_images, targets, sample_weights
 
 
 class DatasetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], batch_size: int, window_size: float, shift_size: float,
-                 sampling_frequency: int, melfb: np.ndarray, max_spectrogram_len: int):
+                 sampling_frequency: int, melfb: np.ndarray, max_spectrogram_len: int,
+                 indices: Union[np.ndarray, List[int], None]=None):
         self.X = X
         self.batch_size = batch_size
         self.max_spectrogram_len = max_spectrogram_len
@@ -69,9 +71,13 @@ class DatasetGenerator(keras.utils.Sequence):
         self.shift_size = shift_size
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
+        self.indices = indices
 
     def __len__(self):
-        n_samples = self.X.shape[0] if isinstance(self.X, np.ndarray) else len(self.X)
+        if self.indices is None:
+            n_samples = self.X.shape[0] if isinstance(self.X, np.ndarray) else len(self.X)
+        else:
+            n_samples = len(self.indices)
         return int(np.ceil(n_samples / float(self.batch_size)))
 
     def __getitem__(self, idx):
@@ -83,7 +89,8 @@ class DatasetGenerator(keras.utils.Sequence):
                                           dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
             spectrogram = SoundRecognizer.sound_to_melspectrogram(
-                sound=self.X[sample_idx], sampling_frequency=self.sampling_frequency, melfb=self.melfb,
+                sound=self.X[sample_idx if self.indices is None else self.indices[sample_idx]],
+                sampling_frequency=self.sampling_frequency, melfb=self.melfb,
                 window_size=self.window_size, shift_size=self.shift_size
             )
             r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
@@ -184,6 +191,27 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if (X_val is None) or (y_val is None):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
                                            verbose=2 if self.verbose else 0)
+            indices_of_unknown = list(filter(lambda it: y[it] == -1, range(len(y))))
+            if len(indices_of_unknown) > 0:
+                indices_of_known = list(filter(lambda it: y[it] != -1, range(len(y))))
+                max_probabilities_for_known = self.recognizer_.predict_generator(
+                    DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
+                                     melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
+                                     sampling_frequency=self.sampling_frequency, indices=indices_of_known)
+                ).max(axis=1)
+                max_probabilities_for_unknown = self.recognizer_.predict_generator(
+                    DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
+                                     melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
+                                     sampling_frequency=self.sampling_frequency, indices=indices_of_unknown)
+                ).max(axis=1)
+                self.threshold_ = self.find_optimal_threshold(max_probabilities_for_known,
+                                                              max_probabilities_for_unknown)
+            else:
+                self.threshold_ = self.recognizer_.predict_generator(
+                    DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
+                                     melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
+                                     sampling_frequency=self.sampling_frequency)
+                ).max(axis=1).min()
         else:
             validset_generator = TrainsetGenerator(
                 X=X_val, y=y_val, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
@@ -197,11 +225,72 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
                                            callbacks=[early_stopping_callback])
+            indices_of_unknown_for_training = list(filter(lambda it: y[it] == -1, range(len(y))))
+            indices_of_unknown_for_validation = list(filter(lambda it: y_val[it] == -1, range(len(y_val))))
+            if (len(indices_of_unknown_for_training) + len(indices_of_unknown_for_validation)) > 0:
+                indices_of_known = list(filter(lambda it: y_val[it] != -1, range(len(y_val))))
+                max_probabilities_for_known = self.recognizer_.predict_generator(
+                    DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
+                                     max_spectrogram_len=self.max_spectrogram_size_, window_size=self.window_size,
+                                     shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
+                                     indices=indices_of_known)
+                ).max(axis=1)
+                if (len(indices_of_unknown_for_training) > 0) and (len(indices_of_unknown_for_validation) > 0):
+                    max_probabilities_for_unknown = np.concatenate(
+                        (
+                            self.recognizer_.predict_generator(
+                                DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_,
+                                                 max_spectrogram_len=self.max_spectrogram_size_,
+                                                 window_size=self.window_size, shift_size=self.shift_size,
+                                                 sampling_frequency=self.sampling_frequency,
+                                                 indices=indices_of_unknown_for_training)
+                            ).max(axis=1),
+                            self.recognizer_.predict_generator(
+                                DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
+                                                 max_spectrogram_len=self.max_spectrogram_size_,
+                                                 window_size=self.window_size, shift_size=self.shift_size,
+                                                 sampling_frequency=self.sampling_frequency,
+                                                 indices=indices_of_unknown_for_validation)
+                            ).max(axis=1)
+                        )
+                    )
+                elif len(indices_of_unknown_for_training) > 0:
+                    max_probabilities_for_unknown = self.recognizer_.predict_generator(
+                        DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_,
+                                         max_spectrogram_len=self.max_spectrogram_size_,
+                                         window_size=self.window_size, shift_size=self.shift_size,
+                                         sampling_frequency=self.sampling_frequency,
+                                         indices=indices_of_unknown_for_training)
+                    ).max(axis=1)
+                else:
+                    max_probabilities_for_unknown = self.recognizer_.predict_generator(
+                        DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
+                                         max_spectrogram_len=self.max_spectrogram_size_,
+                                         window_size=self.window_size, shift_size=self.shift_size,
+                                         sampling_frequency=self.sampling_frequency,
+                                         indices=indices_of_unknown_for_validation)
+                    ).max(axis=1)
+                self.threshold_ = self.find_optimal_threshold(max_probabilities_for_known,
+                                                              max_probabilities_for_unknown)
+            else:
+                self.threshold_ = self.recognizer_.predict_generator(
+                    DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
+                                     max_spectrogram_len=self.max_spectrogram_size_, window_size=self.window_size,
+                                     shift_size=self.shift_size, sampling_frequency=self.sampling_frequency)
+                ).max(axis=1).min()
         return self
 
     def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
-        indices_of_classes = self.predict_proba(X).argmax(axis=1)
-        return np.array([self.classes_reverse_[idx] for idx in indices_of_classes], dtype=object)
+        probabilities = self.predict_proba(X)
+        indices_of_classes = probabilities.argmax(axis=1)
+        max_probabilities = probabilities.max(axis=1)
+        res = []
+        for idx in indices_of_classes:
+            if max_probabilities[idx] < self.threshold_:
+                res.append(-1)
+            else:
+                res.append(self.classes_reverse_[indices_of_classes[idx]])
+        return np.array(res, dtype=object)
 
     def predict_proba(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
@@ -253,7 +342,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1])
 
     def check_is_fitted(self):
-        check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'max_spectrogram_size_'])
+        check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'max_spectrogram_size_', 'threshold_'])
 
     def get_spectrogram_length(self, sound: np.ndarray) -> int:
         n_window = int(round(self.sampling_frequency * self.window_size))
@@ -558,11 +647,22 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         classed_dict = dict()
         classes_dict_reverse = list()
         n_classes = 0
-        for cur in y:
+        for sample_idx, cur in enumerate(y):
             if cur not in classed_dict:
-                classed_dict[cur] = n_classes
-                classes_dict_reverse.append(cur)
-                n_classes += 1
+                if isinstance(cur, int) or isinstance(cur, np.int32) or isinstance(cur, np.int16) or \
+                        isinstance(cur, np.int8) or isinstance(cur, np.int64):
+                    if cur < 0:
+                        if cur < -1:
+                            raise ValueError('{0} is inadmissible value for `{1}`[{2}]!'.format(cur, y_name,
+                                                                                                sample_idx))
+                    else:
+                        classed_dict[cur] = n_classes
+                        classes_dict_reverse.append(cur)
+                        n_classes += 1
+                else:
+                    classed_dict[cur] = n_classes
+                    classes_dict_reverse.append(cur)
+                    n_classes += 1
         if n_classes < 2:
             raise ValueError('There are too few classes in the `{0}`!'.format(y_name))
         return classed_dict, classes_dict_reverse
@@ -574,3 +674,33 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         while n_fft < n_window:
             n_fft *= 2
         return n_fft
+
+    @staticmethod
+    def find_optimal_threshold(probabilities_for_known: np.ndarray, probabilities_for_unknown: np.ndarray) -> float:
+        best_threshold = 1e-3
+        y_true = np.array(
+            [1 for _ in range(probabilities_for_known.shape[0])] +
+            [0 for _ in range(probabilities_for_unknown.shape[0])],
+            dtype=np.int32
+        )
+        y_pred = np.concatenate(
+            (
+                np.asarray(probabilities_for_known >= best_threshold, dtype=np.int32),
+                np.asarray(probabilities_for_unknown >= best_threshold, dtype=np.int32)
+            )
+        )
+        best_f1 = f1_score(y_true, y_pred, average='binary')
+        threshold = best_threshold + 1e-3
+        del y_pred
+        while threshold < 1.0:
+            y_pred = np.concatenate(
+                (
+                    np.asarray(probabilities_for_known >= threshold, dtype=np.int32),
+                    np.asarray(probabilities_for_unknown >= threshold, dtype=np.int32)
+                )
+            )
+            new_f1 = f1_score(y_true, y_pred, average='binary')
+            if new_f1 > best_f1:
+                best_f1 = new_f1
+                best_threshold = threshold
+        return best_threshold
