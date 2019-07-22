@@ -195,6 +195,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.recognizer_.compile(optimizer='adam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         if self.verbose:
+            if self.cache_dir is not None:
+                print('Cach directory is `{0}`.'.format(self.cache_dir))
             keras.utils.print_summary(self.recognizer_, line_length=120)
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
