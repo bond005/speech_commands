@@ -115,8 +115,8 @@ def main():
             pickle.dump(recognizer, fp)
     y_pred = recognizer.predict(data_for_testing[0])
     print(classification_report(
-        list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, data_for_testing[1])),
-        list(map(lambda it2: 'UNKNOWN' if it2 == -1 else it2, y_pred))
+        list(map(lambda it1: '__UNKNOWN__' if it1 == -1 else it1, data_for_testing[1])),
+        list(map(lambda it2: '__UNKNOWN__' if it2 == -1 else it2, y_pred))
     ))
 
 
