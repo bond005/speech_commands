@@ -105,13 +105,14 @@ def main():
     print('')
 
     model_name = os.path.normpath(cmd_args.model_name)
+    cache_dir_name = None if cmd_args.cache_dir_name is None else os.path.normpath(cmd_args.cache_dir_name)
     if os.path.isfile(model_name):
         with open(model_name, 'rb') as fp:
             recognizer = pickle.load(fp)
     else:
         recognizer = SoundRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
                                      batch_size=64, max_epochs=100, patience=3, verbose=True, warm_start=False,
-                                     random_seed=42)
+                                     random_seed=42, cache_dir=cache_dir_name)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation)
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
