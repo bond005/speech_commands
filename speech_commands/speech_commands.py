@@ -40,7 +40,7 @@ class TrainsetGenerator(keras.utils.Sequence):
 
     def __getitem__(self, idx):
         batch_start = idx * self.batch_size
-        batch_end = min((idx + 1) * self.batch_size, len(self.y))
+        batch_end = min((idx + 1) * self.batch_size, len(self.indices))
         batch_size = batch_end - batch_start
         if (self.cache_dir_name is None) or \
                 (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
