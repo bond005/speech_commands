@@ -709,10 +709,11 @@ class DatasetGenerator(keras.utils.Sequence):
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
         self.indices = indices
-        if len(indices) != len(set(indices.tolist()) if isinstance(indices, np.ndarray) else set(indices)):
-            raise ValueError('Indices of used data samples are repeated!')
-        if (np.min(indices) < 0) or (np.max(indices) >= (X.shape[0] if isinstance(X, np.ndarray) else len(X))):
-            raise ValueError('Indices of used data samples are wrong!')
+        if indices is not None:
+            if len(indices) != len(set(indices.tolist()) if isinstance(indices, np.ndarray) else set(indices)):
+                raise ValueError('Indices of used data samples are repeated!')
+            if (np.min(indices) < 0) or (np.max(indices) >= (X.shape[0] if isinstance(X, np.ndarray) else len(X))):
+                raise ValueError('Indices of used data samples are wrong!')
 
     def __len__(self):
         return int(np.ceil(self.get_number_of_samples() / float(self.batch_size)))
