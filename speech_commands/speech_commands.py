@@ -102,7 +102,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
         trainset_generator = TrainsetGenerator(
-            X=X, y=y, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_, melfb=self.melfb_,
+            X=X, y=y, batch_size=self.batch_size, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
             classes=self.classes_, sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None,
             cache_dir_name=self.cache_dir, suffix='train'
@@ -114,12 +114,12 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             if len(indices_of_unknown) > 0:
                 indices_of_known = list(filter(lambda it: y[it] != -1, range(len(y))))
                 max_probabilities_for_known = self.recognizer_.predict_generator(
-                    DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
+                    DatasetGenerator(X=X, batch_size=self.batch_size,
                                      melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
                                      sampling_frequency=self.sampling_frequency, indices=indices_of_known)
                 ).max(axis=1)
                 max_probabilities_for_unknown = self.recognizer_.predict_generator(
-                    DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
+                    DatasetGenerator(X=X, batch_size=self.batch_size,
                                      melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
                                      sampling_frequency=self.sampling_frequency, indices=indices_of_unknown)
                 ).max(axis=1)
@@ -127,15 +127,14 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                                                               max_probabilities_for_unknown)
             else:
                 self.threshold_ = self.recognizer_.predict_generator(
-                    DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
+                    DatasetGenerator(X=X, batch_size=self.batch_size,
                                      melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
                                      sampling_frequency=self.sampling_frequency)
                 ).max(axis=1).min()
         else:
             validset_generator = TrainsetGenerator(
-                X=X_val, y=y_val, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
-                melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
-                sampling_frequency=self.sampling_frequency, classes=self.classes_,
+                X=X_val, y=y_val, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
+                shift_size=self.shift_size, sampling_frequency=self.sampling_frequency, classes=self.classes_,
                 sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None,
                 cache_dir_name=self.cache_dir, suffix='valid'
             )
@@ -152,23 +151,20 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 indices_of_known = list(filter(lambda it: y_val[it] != -1, range(len(y_val))))
                 max_probabilities_for_known = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
-                                     max_spectrogram_len=self.max_spectrogram_size_, window_size=self.window_size,
-                                     shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
-                                     indices=indices_of_known)
+                                     window_size=self.window_size, shift_size=self.shift_size,
+                                     sampling_frequency=self.sampling_frequency, indices=indices_of_known)
                 ).max(axis=1)
                 if (len(indices_of_unknown_for_training) > 0) and (len(indices_of_unknown_for_validation) > 0):
                     max_probabilities_for_unknown = np.concatenate(
                         (
                             self.recognizer_.predict_generator(
                                 DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_,
-                                                 max_spectrogram_len=self.max_spectrogram_size_,
                                                  window_size=self.window_size, shift_size=self.shift_size,
                                                  sampling_frequency=self.sampling_frequency,
                                                  indices=indices_of_unknown_for_training)
                             ).max(axis=1),
                             self.recognizer_.predict_generator(
                                 DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
-                                                 max_spectrogram_len=self.max_spectrogram_size_,
                                                  window_size=self.window_size, shift_size=self.shift_size,
                                                  sampling_frequency=self.sampling_frequency,
                                                  indices=indices_of_unknown_for_validation)
@@ -178,7 +174,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 elif len(indices_of_unknown_for_training) > 0:
                     max_probabilities_for_unknown = self.recognizer_.predict_generator(
                         DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_,
-                                         max_spectrogram_len=self.max_spectrogram_size_,
                                          window_size=self.window_size, shift_size=self.shift_size,
                                          sampling_frequency=self.sampling_frequency,
                                          indices=indices_of_unknown_for_training)
@@ -186,7 +181,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 else:
                     max_probabilities_for_unknown = self.recognizer_.predict_generator(
                         DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
-                                         max_spectrogram_len=self.max_spectrogram_size_,
                                          window_size=self.window_size, shift_size=self.shift_size,
                                          sampling_frequency=self.sampling_frequency,
                                          indices=indices_of_unknown_for_validation)
@@ -196,8 +190,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             else:
                 self.threshold_ = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
-                                     max_spectrogram_len=self.max_spectrogram_size_, window_size=self.window_size,
-                                     shift_size=self.shift_size, sampling_frequency=self.sampling_frequency)
+                                     window_size=self.window_size, shift_size=self.shift_size,
+                                     sampling_frequency=self.sampling_frequency)
                 ).max(axis=1).min()
         return self
 
@@ -223,9 +217,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
         return self.recognizer_.predict_generator(
-            DatasetGenerator(X=X, batch_size=self.batch_size, max_spectrogram_len=self.max_spectrogram_size_,
-                             melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
-                             sampling_frequency=self.sampling_frequency)
+            DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
+                             shift_size=self.shift_size, sampling_frequency=self.sampling_frequency)
         )
 
     def predict_log_proba(self, X: Union[list, tuple, np.ndarray]) -> np.ndarray:
@@ -392,38 +385,22 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         return np.dot(melfb, specgram).transpose()
 
     @staticmethod
-    def melspectrogram_to_image(spectrogram: np.ndarray,
-                                max_spectrogram_size: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def melspectrogram_to_image(spectrogram: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         max_value = spectrogram.max()
         min_value = spectrogram.min()
         normalized = spectrogram - min_value
         if max_value > min_value:
             normalized /= (max_value - min_value)
-        if normalized.shape[0] < max_spectrogram_size:
+        if normalized.shape[0] < SoundRecognizer.IMAGESIZE[0]:
             normalized = np.vstack(
                 (
                     normalized,
-                    np.zeros((max_spectrogram_size - normalized.shape[0], normalized.shape[1]), dtype=normalized.dtype)
-                )
-            )
-        elif normalized.shape[0] > max_spectrogram_size:
-            normalized = normalized[0:max_spectrogram_size]
-        if max_spectrogram_size < SoundRecognizer.IMAGESIZE[0]:
-            normalized = np.vstack(
-                (
-                    normalized,
-                    np.zeros((SoundRecognizer.IMAGESIZE[0] - max_spectrogram_size, normalized.shape[1]),
+                    np.zeros((SoundRecognizer.IMAGESIZE[0] - normalized.shape[0], normalized.shape[1]),
                              dtype=normalized.dtype)
                 )
             )
-        elif max_spectrogram_size > SoundRecognizer.IMAGESIZE[0]:
-            indices = np.arange(0, SoundRecognizer.IMAGESIZE[0],
-                                max_spectrogram_size / float(SoundRecognizer.IMAGESIZE[0])).astype(dtype=np.int32)
-            normalized_ = np.zeros((SoundRecognizer.IMAGESIZE[0], normalized.shape[1]), dtype=normalized.dtype)
-            for idx, val in enumerate(indices):
-                normalized_[idx] = normalized[val]
-            del normalized
-            normalized = normalized_
+        elif normalized.shape[0] > SoundRecognizer.IMAGESIZE[0]:
+            normalized = normalized[0:SoundRecognizer.IMAGESIZE[0]]
         r = np.zeros(shape=normalized.shape, dtype=np.float32)
         g = np.zeros(shape=normalized.shape, dtype=np.float32)
         b = np.zeros(shape=normalized.shape, dtype=np.float32)
@@ -641,13 +618,12 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
 class TrainsetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
                  batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
-                 max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
+                 classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
                  cache_dir_name: Union[str, None]=None, suffix: str=''):
         self.X = X
         self.y = y
         self.sample_weight = sample_weight
         self.batch_size = batch_size
-        self.max_spectrogram_len = max_spectrogram_len
         self.window_size = window_size
         self.shift_size = shift_size
         self.sampling_frequency = sampling_frequency
@@ -679,8 +655,7 @@ class TrainsetGenerator(keras.utils.Sequence):
                     melfb=self.melfb,
                     window_size=self.window_size, shift_size=self.shift_size
                 )
-                r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
-                                                                  max_spectrogram_size=self.max_spectrogram_len)
+                r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram)
                 spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
                 spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
                 spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
@@ -701,11 +676,9 @@ class TrainsetGenerator(keras.utils.Sequence):
 
 class DatasetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], batch_size: int, window_size: float, shift_size: float,
-                 sampling_frequency: int, melfb: np.ndarray, max_spectrogram_len: int,
-                 indices: Union[np.ndarray, List[int], None]=None):
+                 sampling_frequency: int, melfb: np.ndarray, indices: Union[np.ndarray, List[int], None]=None):
         self.X = X
         self.batch_size = batch_size
-        self.max_spectrogram_len = max_spectrogram_len
         self.window_size = window_size
         self.shift_size = shift_size
         self.sampling_frequency = sampling_frequency
@@ -733,8 +706,7 @@ class DatasetGenerator(keras.utils.Sequence):
                 sampling_frequency=self.sampling_frequency, melfb=self.melfb,
                 window_size=self.window_size, shift_size=self.shift_size
             )
-            r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
-                                                              max_spectrogram_size=self.max_spectrogram_len)
+            r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram)
             spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
             spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
             spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
