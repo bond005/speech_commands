@@ -73,7 +73,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(self.recognizer_.get_layer('NASNet_Base')(input_data))
+            )(self.recognizer_.get_layer('ResNet_Base')(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
@@ -82,14 +82,14 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.classes_ = classes_dict
             self.classes_reverse_ = classes_dict_reverse
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
-            nasnet = keras.applications.nasnet.NASNetMobile(
+            resnet = keras.applications.resnet50.ResNet50(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
                 input_tensor=input_data, pooling='avg')
-            nasnet.name = 'NASNet_Base'
+            resnet.name = 'RESNet_Base'
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(nasnet(input_data))
+            )(resnet(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
