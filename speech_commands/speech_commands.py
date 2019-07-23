@@ -46,7 +46,7 @@ class TrainsetGenerator(keras.utils.Sequence):
                 (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
             spectrograms_as_images = np.empty(
                 (batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
-                dtype=np.float32)
+                dtype=np.float16)
             targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
             for sample_idx in range(batch_start, batch_end):
                 spectrogram = SoundRecognizer.sound_to_melspectrogram(
@@ -56,9 +56,9 @@ class TrainsetGenerator(keras.utils.Sequence):
                 )
                 r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
                                                                   max_spectrogram_size=self.max_spectrogram_len)
-                spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
-                spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
-                spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
+                spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
+                spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
+                spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
                 targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
             if self.cache_dir_name is not None:
                 with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'wb') as fp:
@@ -71,7 +71,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
             sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
-        return spectrograms_as_images, targets, sample_weights
+        return np.asarray(spectrograms_as_images, dtype=np.float32), targets, sample_weights
 
 
 class DatasetGenerator(keras.utils.Sequence):
@@ -100,7 +100,7 @@ class DatasetGenerator(keras.utils.Sequence):
         batch_end = min((idx + 1) * self.batch_size, n_samples)
         batch_size = batch_end - batch_start
         spectrograms_as_images = np.empty((batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
-                                          dtype=np.float32)
+                                          dtype=np.float16)
         for sample_idx in range(batch_start, batch_end):
             spectrogram = SoundRecognizer.sound_to_melspectrogram(
                 sound=self.X[sample_idx if self.indices is None else self.indices[sample_idx]],
@@ -109,10 +109,10 @@ class DatasetGenerator(keras.utils.Sequence):
             )
             r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
                                                               max_spectrogram_size=self.max_spectrogram_len)
-            spectrograms_as_images[sample_idx - batch_start, :, :, 0] = r
-            spectrograms_as_images[sample_idx - batch_start, :, :, 1] = g
-            spectrograms_as_images[sample_idx - batch_start, :, :, 2] = b
-        return spectrograms_as_images
+            spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
+            spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
+            spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
+        return np.asarray(spectrograms_as_images, dtype=np.float32)
 
 
 class SoundRecognizer(ClassifierMixin, BaseEstimator):
