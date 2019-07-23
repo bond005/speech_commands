@@ -607,7 +607,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
 
     @staticmethod
     def find_optimal_threshold(probabilities_for_known: np.ndarray, probabilities_for_unknown: np.ndarray) -> float:
-        best_threshold = 1e-3
+        best_threshold = 1e-2
         y_true = np.array(
             [1 for _ in range(probabilities_for_known.shape[0])] +
             [0 for _ in range(probabilities_for_unknown.shape[0])],
@@ -620,7 +620,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             )
         )
         best_f1 = f1_score(y_true, y_pred, average='binary')
-        threshold = best_threshold + 1e-3
+        threshold = best_threshold + 1e-2
         del y_pred
         while threshold < 1.0:
             y_pred = np.concatenate(
@@ -633,7 +633,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             if new_f1 > best_f1:
                 best_f1 = new_f1
                 best_threshold = threshold
-            threshold += 1e-3
+            threshold += 1e-2
             del y_pred
         return best_threshold
 
