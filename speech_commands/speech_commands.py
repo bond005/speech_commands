@@ -76,7 +76,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
             )(self.recognizer_.get_layer('MobileNet_Base')(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer='adam', loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         else:
             self.finalize_model()
@@ -93,7 +93,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
             )(mobilenet(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer='adam', loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         if self.verbose:
             if self.cache_dir is not None:
