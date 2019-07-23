@@ -632,6 +632,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 best_f1 = new_f1
                 best_threshold = threshold
             threshold += 1e-3
+            del y_pred
         return best_threshold
 
 
