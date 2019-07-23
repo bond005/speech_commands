@@ -205,7 +205,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         indices_of_classes = probabilities.argmax(axis=1)
         max_probabilities = probabilities.max(axis=1)
         res = []
-        for idx in indices_of_classes:
+        for idx in range(probabilities.shape[0]):
             if max_probabilities[idx] < self.threshold_:
                 res.append(-1)
             else:
@@ -356,8 +356,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(**new_params)
         self.finalize_model()
         is_fitted = ('classes_' in new_params) and ('classes_reverse_' in new_params) and \
-                    ('max_spectrogram_size_' in new_params) and ('threshold_' in new_params) \
-                    and ('model_data_' in new_params)
+                    ('max_spectrogram_size_' in new_params) and ('threshold_' in new_params) and \
+                    ('model_data_' in new_params)
         if is_fitted:
             self.set_params(**new_params)
             self.max_spectrogram_size_ = new_params['max_spectrogram_size_']
