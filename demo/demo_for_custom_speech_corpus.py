@@ -112,7 +112,7 @@ def main():
                                      batch_size=4, max_epochs=100, patience=5, verbose=True, warm_start=False,
                                      random_seed=42, cache_dir=cache_dir_name)
         recognizer.fit(sounds_for_training, labels_for_training,
-                       validation_data=(sounds_for_validation, labels_for_validation))
+                       validation_data=(sounds_for_validation, labels_for_validation), sample_weight='balanced')
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
     y_pred = recognizer.predict(sounds_for_testing)

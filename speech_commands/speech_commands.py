@@ -101,11 +101,24 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             keras.utils.print_summary(self.recognizer_, line_length=120)
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
+        class_freq = dict()
+        freq_sum = 0
+        for cur in y:
+            if cur != -1:
+                class_freq[cur] = class_freq.get(cur, 0) + 1
+                freq_sum += 1
+        if 'sample_weight' in kwargs:
+            if kwargs['sample_weight'] == 'balanced':
+                sample_weight = np.array([float(class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
+                                         dtype=np.float32)
+            else:
+                sample_weight = kwargs['sample_weight']
+        else:
+            sample_weight = None
         trainset_generator = TrainsetGenerator(
             X=X, y=y, batch_size=self.batch_size, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
-            classes=self.classes_, sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None,
-            cache_dir_name=self.cache_dir, suffix='train'
+            classes=self.classes_, sample_weight=sample_weight, cache_dir_name=self.cache_dir, suffix='train'
         )
         if (X_val is None) or (y_val is None):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
