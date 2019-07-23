@@ -140,7 +140,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
-                monitor='val_categorical_accuracy', mode='min'
+                monitor='val_categorical_accuracy', mode='max'
             )
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
