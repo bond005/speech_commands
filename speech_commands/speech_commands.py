@@ -337,6 +337,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             params['classes_'] = copy.deepcopy(self.classes_)
             params['classes_reverse_'] = copy.deepcopy(self.classes_reverse_)
             params['max_spectrogram_size_'] = self.max_spectrogram_size_
+            params['threshold_'] = self.threshold_
             model_file_name = self.get_temp_model_name()
             try:
                 self.recognizer_.save(model_file_name)
@@ -353,16 +354,16 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if not isinstance(new_params, dict):
             raise ValueError('`new_params` is wrong! Expected `{0}`, got `{1}`.'.format(type({0: 1}), type(new_params)))
         self.check_params(**new_params)
-        if hasattr(self, 'tokenizer_'):
-            del self.tokenizer_
         self.finalize_model()
         is_fitted = ('classes_' in new_params) and ('classes_reverse_' in new_params) and \
-                    ('max_spectrogram_size_' in new_params) and ('model_data_' in new_params)
+                    ('max_spectrogram_size_' in new_params) and ('threshold_' in new_params) \
+                    and ('model_data_' in new_params)
         if is_fitted:
             self.set_params(**new_params)
             self.max_spectrogram_size_ = new_params['max_spectrogram_size_']
             self.classes_reverse_ = copy.deepcopy(new_params['classes_reverse_'])
             self.classes_ = copy.deepcopy(new_params['classes_'])
+            self.threshold_ = new_params['threshold_']
             model_file_name = self.get_temp_model_name()
             try:
                 with open(model_file_name, 'wb') as fp:
