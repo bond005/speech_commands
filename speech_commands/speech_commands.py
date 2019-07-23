@@ -44,7 +44,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if self.verbose:
             print('Train set size is {0}.'.format(n_train))
             print('Classes number is {0}.'.format(len(classes_dict)))
-        lengths_of_spectrograms = [self.get_spectrogram_length(X[sample_idx]) for sample_idx in range(n_train)]
         if 'validation_data' in kwargs:
             if (not isinstance(kwargs['validation_data'], list)) and (not isinstance(kwargs['validation_data'], tuple)):
                 raise ValueError('`validation_data` is wrong! Expected a {0} or {1}, but got a {2}!'.format(
@@ -74,7 +73,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(self.recognizer_.get_layer('MobileNet_Base')(input_data))
+            )(self.recognizer_.get_layer('NASNet_Base')(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
@@ -82,16 +81,15 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.finalize_model()
             self.classes_ = classes_dict
             self.classes_reverse_ = classes_dict_reverse
-            self.max_spectrogram_size_ = lengths_of_spectrograms[int(round((n_train - 1) * 0.98))]
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
-            mobilenet = keras.applications.mobilenet.MobileNet(
+            nasnet = keras.applications.nasnet.NASNetMobile(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), alpha=1.0, depth_multiplier=1, include_top=False,
-                weights='imagenet', input_tensor=input_data, pooling='max')
-            mobilenet.name = 'MobileNet_Base'
+                weights='imagenet', input_tensor=input_data, pooling='avg')
+            nasnet.name = 'NASNet_Base'
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(mobilenet(input_data))
+            )(nasnet(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
@@ -111,6 +109,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             print('Class weights:')
             for cur in sorted(list(class_freq.keys())):
                 print('  - {0}: {1:.6f}'.format(cur, float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum)))
+            print('Sampling frequency is {0} Hz.'.format(self.sampling_frequency))
         if 'sample_weight' in kwargs:
             if kwargs['sample_weight'] == 'balanced':
                 sample_weight = np.array([float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
@@ -282,7 +281,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1])
 
     def check_is_fitted(self):
-        check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'max_spectrogram_size_', 'threshold_'])
+        check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'threshold_'])
 
     def get_spectrogram_length(self, sound: np.ndarray) -> int:
         n_window = int(round(self.sampling_frequency * self.window_size))
@@ -316,7 +315,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if is_fitted:
             result.classes_ = copy.copy(self.classes_)
             result.classes_reverse_ = copy.copy(self.classes_reverse_)
-            result.max_spectrogram_size_ = self.max_spectrogram_size_
             result.recognizer_ = self.recognizer_
         return result
 
@@ -336,7 +334,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if is_fitted:
             result.classes_ = copy.deepcopy(self.classes_)
             result.classes_reverse_ = copy.deepcopy(self.classes_reverse_)
-            result.max_spectrogram_size_ = self.max_spectrogram_size_
             result.recognizer_ = self.recognizer_
         return result
 
@@ -356,7 +353,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if is_fitted:
             params['classes_'] = copy.deepcopy(self.classes_)
             params['classes_reverse_'] = copy.deepcopy(self.classes_reverse_)
-            params['max_spectrogram_size_'] = self.max_spectrogram_size_
             params['threshold_'] = self.threshold_
             model_file_name = self.get_temp_model_name()
             try:
@@ -376,11 +372,9 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(**new_params)
         self.finalize_model()
         is_fitted = ('classes_' in new_params) and ('classes_reverse_' in new_params) and \
-                    ('max_spectrogram_size_' in new_params) and ('threshold_' in new_params) and \
-                    ('model_data_' in new_params)
+                    ('threshold_' in new_params) and ('model_data_' in new_params)
         if is_fitted:
             self.set_params(**new_params)
-            self.max_spectrogram_size_ = new_params['max_spectrogram_size_']
             self.classes_reverse_ = copy.deepcopy(new_params['classes_reverse_'])
             self.classes_ = copy.deepcopy(new_params['classes_'])
             self.threshold_ = new_params['threshold_']
@@ -412,8 +406,11 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
 
     @staticmethod
     def melspectrogram_to_image(spectrogram: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        max_value = spectrogram.max()
-        min_value = spectrogram.min()
+        values = np.sort(spectrogram.reshape((spectrogram.shape[0] * spectrogram.shape[1],)))
+        n = int(round(0.01 * values.shape[0]))
+        max_value = values[-n - 1]
+        min_value = values[n]
+        del values
         normalized = spectrogram - min_value
         if max_value > min_value:
             normalized /= (max_value - min_value)
@@ -432,6 +429,11 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         b = np.zeros(shape=normalized.shape, dtype=np.float32)
         for row_idx in range(normalized.shape[0]):
             for col_idx in range(normalized.shape[1]):
+                cur_value = normalized[row_idx][col_idx]
+                if cur_value < 0.0:
+                    cur_value = 0.0
+                elif cur_value > 1.0:
+                    cur_value = 1.0
                 r_, g_, b_, _ = SoundRecognizer.COLORMAP(normalized[row_idx][col_idx])
                 r[row_idx][col_idx] = r_
                 g[row_idx][col_idx] = g_
@@ -656,6 +658,10 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.melfb = melfb
         self.classes = classes
         self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
+        assert len(self.indices) > 2
+        assert min(self.indices) >= 0
+        assert max(self.indices) < len(y)
+        assert len(self.indices) == len(set(self.indices))
         self.cache_dir_name = None if cache_dir_name is None else os.path.normpath(cache_dir_name)
         self.suffix = suffix.strip()
         if len(self.suffix) == 0:
