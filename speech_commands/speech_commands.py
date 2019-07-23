@@ -107,9 +107,13 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             if cur != -1:
                 class_freq[cur] = class_freq.get(cur, 0) + 1
                 freq_sum += 1
+        if self.verbose:
+            print('Class weights:')
+            for cur in sorted(list(class_freq.keys())):
+                print('  - {0}: {1:.6f}'.format(cur, float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum)))
         if 'sample_weight' in kwargs:
             if kwargs['sample_weight'] == 'balanced':
-                sample_weight = np.array([float(freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
+                sample_weight = np.array([float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
                                          dtype=np.float32)
             else:
                 sample_weight = kwargs['sample_weight']
@@ -148,7 +152,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             if 'sample_weight' in kwargs:
                 if kwargs['sample_weight'] == 'balanced':
                     sample_weight_for_validation = np.array(
-                        [float(freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y_val],
+                        [float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y_val],
                         dtype=np.float32
                     )
                 else:
