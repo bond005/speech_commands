@@ -65,7 +65,7 @@ def read_data_for_training(annotation_file_name: str,
             raise ValueError('Sampling frequency of the sound `{0}` is {1}, but target sampling frequency '
                              'is {2}!'.format(sound_name, new_sampling_frequency, sampling_frequency))
         sounds.append(new_sound)
-        classes_of_sounds.append(class_name if len(class_name) > 0 else -11)
+        classes_of_sounds.append(class_name if len(class_name) > 0 else -1)
     return sounds, classes_of_sounds, sampling_frequency
 
 
@@ -75,12 +75,15 @@ def main():
                         help='The binary file with the speech classifier.')
     parser.add_argument('-t', '--train', dest='train_file_name', type=str, required=True,
                         help='Path to the CSV file with data for training.')
+    parser.add_argument('-a', '--val', dest='val_file_name', type=str, required=True,
+                        help='Path to the CSV file with data for validation.')
     parser.add_argument('-e', '--test', dest='test_file_name', type=str, required=True,
-                        help='Path to the CSV file with data for evaluation.')
+                        help='Path to the CSV file with data for final evaluation.')
     cmd_args = parser.parse_args()
 
     model_name = os.path.normpath(cmd_args.model_name)
     train_data_name = os.path.normpath(cmd_args.train_file_name)
+    validation_data_name = os.path.normpath(cmd_args.val_file_name)
     test_data_name = os.path.normpath(cmd_args.test_file_name)
 
     sounds_for_training, labels_for_training, sampling_frequency = read_data_for_training(
@@ -92,6 +95,12 @@ def main():
     if sampling_frequency != sampling_frequency_:
         raise ValueError('Sampling frequency for train sounds does not equal to sampling frequency for test sounds! '
                          '{0} != {1}'.format(sampling_frequency, sampling_frequency_))
+    sounds_for_validation, labels_for_validation, sampling_frequency_ = read_data_for_training(
+        validation_data_name, os.path.dirname(validation_data_name)
+    )
+    if sampling_frequency != sampling_frequency_:
+        raise ValueError('Sampling frequency for train sounds does not equal to sampling frequency for validation '
+                         'sounds! {0} != {1}'.format(sampling_frequency, sampling_frequency_))
     if os.path.isfile(model_name):
         with open(model_name, 'rb') as fp:
             recognizer = pickle.load(fp)
@@ -100,13 +109,13 @@ def main():
                                      batch_size=8, max_epochs=100, patience=3, verbose=True, warm_start=False,
                                      random_seed=42)
         recognizer.fit(sounds_for_training, labels_for_training,
-                       validation_data=(sounds_for_testing, labels_for_testing))
+                       validation_data=(sounds_for_validation, labels_for_validation))
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
     y_pred = recognizer.predict(sounds_for_testing)
     print(classification_report(
         list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, labels_for_testing)),
-        list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, y_pred))
+        list(map(lambda it2: 'UNKNOWN' if it2 == -1 else it2, y_pred))
     ))
 
 
