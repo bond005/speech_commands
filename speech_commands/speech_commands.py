@@ -109,7 +109,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 freq_sum += 1
         if 'sample_weight' in kwargs:
             if kwargs['sample_weight'] == 'balanced':
-                sample_weight = np.array([float(class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
+                sample_weight = np.array([float(freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
                                          dtype=np.float32)
             else:
                 sample_weight = kwargs['sample_weight']
