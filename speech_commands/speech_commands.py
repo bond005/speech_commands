@@ -83,8 +83,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.classes_reverse_ = classes_dict_reverse
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
             nasnet = keras.applications.nasnet.NASNetMobile(
-                input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), alpha=1.0, depth_multiplier=1, include_top=False,
-                weights='imagenet', input_tensor=input_data, pooling='avg')
+                input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
+                input_tensor=input_data, pooling='avg')
             nasnet.name = 'NASNet_Base'
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
