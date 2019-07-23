@@ -67,7 +67,7 @@ class TrainsetGenerator(keras.utils.Sequence):
             with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
                 spectrograms_as_images, targets = pickle.load(fp)
         if self.sample_weight is None:
-            return spectrograms_as_images, targets
+            return np.asarray(spectrograms_as_images, dtype=np.float32), targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
             sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
