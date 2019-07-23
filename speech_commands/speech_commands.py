@@ -16,105 +16,6 @@ from sklearn.metrics import f1_score
 from sklearn.utils.validation import check_is_fitted
 
 
-class TrainsetGenerator(keras.utils.Sequence):
-    def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
-                 batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
-                 max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
-                 cache_dir_name: Union[str, None]=None, suffix: str=''):
-        self.X = X
-        self.y = y
-        self.sample_weight = sample_weight
-        self.batch_size = batch_size
-        self.max_spectrogram_len = max_spectrogram_len
-        self.window_size = window_size
-        self.shift_size = shift_size
-        self.sampling_frequency = sampling_frequency
-        self.melfb = melfb
-        self.classes = classes
-        self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
-        self.cache_dir_name = None if cache_dir_name is None else os.path.normpath(cache_dir_name)
-        self.suffix = suffix
-
-    def __len__(self):
-        return int(np.ceil(len(self.indices) / float(self.batch_size)))
-
-    def __getitem__(self, idx):
-        batch_start = idx * self.batch_size
-        batch_end = min((idx + 1) * self.batch_size, len(self.indices))
-        batch_size = batch_end - batch_start
-        if (self.cache_dir_name is None) or \
-                (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
-            spectrograms_as_images = np.empty(
-                (batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
-                dtype=np.float16)
-            targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
-            for sample_idx in range(batch_start, batch_end):
-                spectrogram = SoundRecognizer.sound_to_melspectrogram(
-                    sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency,
-                    melfb=self.melfb,
-                    window_size=self.window_size, shift_size=self.shift_size
-                )
-                r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
-                                                                  max_spectrogram_size=self.max_spectrogram_len)
-                spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
-                spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
-                spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
-                targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
-            if self.cache_dir_name is not None:
-                with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'wb') as fp:
-                    pickle.dump((spectrograms_as_images, targets), fp)
-        else:
-            with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
-                spectrograms_as_images, targets = pickle.load(fp)
-        if self.sample_weight is None:
-            return np.asarray(spectrograms_as_images, dtype=np.float32), targets
-        sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
-        for sample_idx in range(batch_start, batch_end):
-            sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
-        return np.asarray(spectrograms_as_images, dtype=np.float32), targets, sample_weights
-
-
-class DatasetGenerator(keras.utils.Sequence):
-    def __init__(self, X: Union[list, tuple, np.ndarray], batch_size: int, window_size: float, shift_size: float,
-                 sampling_frequency: int, melfb: np.ndarray, max_spectrogram_len: int,
-                 indices: Union[np.ndarray, List[int], None]=None):
-        self.X = X
-        self.batch_size = batch_size
-        self.max_spectrogram_len = max_spectrogram_len
-        self.window_size = window_size
-        self.shift_size = shift_size
-        self.sampling_frequency = sampling_frequency
-        self.melfb = melfb
-        self.indices = indices
-
-    def __len__(self):
-        if self.indices is None:
-            n_samples = self.X.shape[0] if isinstance(self.X, np.ndarray) else len(self.X)
-        else:
-            n_samples = len(self.indices)
-        return int(np.ceil(n_samples / float(self.batch_size)))
-
-    def __getitem__(self, idx):
-        n_samples = self.X.shape[0] if isinstance(self.X, np.ndarray) else len(self.X)
-        batch_start = idx * self.batch_size
-        batch_end = min((idx + 1) * self.batch_size, n_samples)
-        batch_size = batch_end - batch_start
-        spectrograms_as_images = np.empty((batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
-                                          dtype=np.float16)
-        for sample_idx in range(batch_start, batch_end):
-            spectrogram = SoundRecognizer.sound_to_melspectrogram(
-                sound=self.X[sample_idx if self.indices is None else self.indices[sample_idx]],
-                sampling_frequency=self.sampling_frequency, melfb=self.melfb,
-                window_size=self.window_size, shift_size=self.shift_size
-            )
-            r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
-                                                              max_spectrogram_size=self.max_spectrogram_len)
-            spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
-            spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
-            spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
-        return np.asarray(spectrograms_as_images, dtype=np.float32)
-
-
 class SoundRecognizer(ClassifierMixin, BaseEstimator):
     COLORMAP = cm.get_cmap('jet')
     IMAGESIZE = (224, 224)
@@ -731,3 +632,108 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 best_f1 = new_f1
                 best_threshold = threshold
         return best_threshold
+
+
+class TrainsetGenerator(keras.utils.Sequence):
+    def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
+                 batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
+                 max_spectrogram_len: int, classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
+                 cache_dir_name: Union[str, None]=None, suffix: str=''):
+        self.X = X
+        self.y = y
+        self.sample_weight = sample_weight
+        self.batch_size = batch_size
+        self.max_spectrogram_len = max_spectrogram_len
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.sampling_frequency = sampling_frequency
+        self.melfb = melfb
+        self.classes = classes
+        self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
+        self.cache_dir_name = None if cache_dir_name is None else os.path.normpath(cache_dir_name)
+        self.suffix = suffix.strip()
+        if len(self.suffix) == 0:
+            raise ValueError('Suffix for cached files must be non-empty!')
+
+    def __len__(self):
+        return int(np.ceil(len(self.indices) / float(self.batch_size)))
+
+    def __getitem__(self, idx):
+        batch_start = idx * self.batch_size
+        batch_end = min((idx + 1) * self.batch_size, len(self.indices))
+        batch_size = batch_end - batch_start
+        if (self.cache_dir_name is None) or \
+                (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
+            spectrograms_as_images = np.empty(
+                (batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
+                dtype=np.float16
+            )
+            targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
+            for sample_idx in range(batch_start, batch_end):
+                spectrogram = SoundRecognizer.sound_to_melspectrogram(
+                    sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency,
+                    melfb=self.melfb,
+                    window_size=self.window_size, shift_size=self.shift_size
+                )
+                r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
+                                                                  max_spectrogram_size=self.max_spectrogram_len)
+                spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
+                spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
+                spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
+                targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
+            if self.cache_dir_name is not None:
+                with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'wb') as fp:
+                    pickle.dump((spectrograms_as_images, targets), fp)
+        else:
+            with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
+                spectrograms_as_images, targets = pickle.load(fp)
+        if self.sample_weight is None:
+            return np.asarray(spectrograms_as_images, dtype=np.float32), targets
+        sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
+        for sample_idx in range(batch_start, batch_end):
+            sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
+        return np.asarray(spectrograms_as_images, dtype=np.float32), targets, sample_weights
+
+
+class DatasetGenerator(keras.utils.Sequence):
+    def __init__(self, X: Union[list, tuple, np.ndarray], batch_size: int, window_size: float, shift_size: float,
+                 sampling_frequency: int, melfb: np.ndarray, max_spectrogram_len: int,
+                 indices: Union[np.ndarray, List[int], None]=None):
+        self.X = X
+        self.batch_size = batch_size
+        self.max_spectrogram_len = max_spectrogram_len
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.sampling_frequency = sampling_frequency
+        self.melfb = melfb
+        self.indices = indices
+
+    def __len__(self):
+        return int(np.ceil(self.get_number_of_samples() / float(self.batch_size)))
+
+    def __getitem__(self, idx):
+        n_samples = self.get_number_of_samples()
+        batch_start = idx * self.batch_size
+        batch_end = min((idx + 1) * self.batch_size, n_samples)
+        batch_size = batch_end - batch_start
+        spectrograms_as_images = np.empty((batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1], 3),
+                                          dtype=np.float16)
+        for sample_idx in range(batch_start, batch_end):
+            spectrogram = SoundRecognizer.sound_to_melspectrogram(
+                sound=self.X[sample_idx if self.indices is None else self.indices[sample_idx]],
+                sampling_frequency=self.sampling_frequency, melfb=self.melfb,
+                window_size=self.window_size, shift_size=self.shift_size
+            )
+            r, g, b = SoundRecognizer.melspectrogram_to_image(spectrogram=spectrogram,
+                                                              max_spectrogram_size=self.max_spectrogram_len)
+            spectrograms_as_images[sample_idx - batch_start, :, :, 0] = np.asarray(r, dtype=np.float16)
+            spectrograms_as_images[sample_idx - batch_start, :, :, 1] = np.asarray(g, dtype=np.float16)
+            spectrograms_as_images[sample_idx - batch_start, :, :, 2] = np.asarray(b, dtype=np.float16)
+        return np.asarray(spectrograms_as_images, dtype=np.float32)
+
+    def get_number_of_samples(self):
+        if self.indices is None:
+            n_samples = self.X.shape[0] if isinstance(self.X, np.ndarray) else len(self.X)
+        else:
+            n_samples = len(self.indices)
+        return n_samples

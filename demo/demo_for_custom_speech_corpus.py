@@ -44,8 +44,20 @@ def read_data_for_training(annotation_file_name: str,
         if not os.path.isfile(sound_name):
             raise ValueError('The file `{0}` does not exist!'.format(sound_name))
         class_name = cur[1].strip().upper()
-        if len(class_name) == 0:
-            raise ValueError('Class name is empty!')
+        if len(class_name) > 0:
+            try:
+                _ = int(class_name)
+                ok = False
+            except:
+                try:
+                    _ = float(class_name)
+                    ok = False
+                except:
+                    ok = class_name.isalnum()
+        else:
+            ok = True
+        if not ok:
+            raise ValueError('`{0}` is wrong name for sound class!'.format(class_name))
         new_sound, new_sampling_frequency = librosa.core.load(path=sound_name, sr=None, mono=True)
         if sampling_frequency is None:
             sampling_frequency = new_sampling_frequency
@@ -53,7 +65,7 @@ def read_data_for_training(annotation_file_name: str,
             raise ValueError('Sampling frequency of the sound `{0}` is {1}, but target sampling frequency '
                              'is {2}!'.format(sound_name, new_sampling_frequency, sampling_frequency))
         sounds.append(new_sound)
-        classes_of_sounds.append(class_name)
+        classes_of_sounds.append(class_name if len(class_name) > 0 else -11)
     return sounds, classes_of_sounds, sampling_frequency
 
 
@@ -92,7 +104,10 @@ def main():
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
     y_pred = recognizer.predict(sounds_for_testing)
-    print(classification_report(labels_for_testing, y_pred))
+    print(classification_report(
+        list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, labels_for_testing)),
+        list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, y_pred))
+    ))
 
 
 if __name__ == '__main__':
