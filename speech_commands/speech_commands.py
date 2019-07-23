@@ -145,11 +145,20 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                                      sampling_frequency=self.sampling_frequency)
                 ).max(axis=1).min()
         else:
+            if 'sample_weight' in kwargs:
+                if kwargs['sample_weight'] == 'balanced':
+                    sample_weight_for_validation = np.array(
+                        [float(freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y_val],
+                        dtype=np.float32
+                    )
+                else:
+                    sample_weight_for_validation = kwargs['sample_weight']
+            else:
+                sample_weight_for_validation = None
             validset_generator = TrainsetGenerator(
                 X=X_val, y=y_val, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
                 shift_size=self.shift_size, sampling_frequency=self.sampling_frequency, classes=self.classes_,
-                sample_weight=kwargs['sample_weight'] if 'sample_weight' in kwargs else None,
-                cache_dir_name=self.cache_dir, suffix='valid'
+                sample_weight=sample_weight_for_validation, cache_dir_name=self.cache_dir, suffix='valid'
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
