@@ -144,24 +144,27 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
             mfcc_ = mfcc
         self.threshold_ = 0.0
         self.check_is_fitted()
-        max_probabilities = self.predict_proba(mfcc=mfcc_)
+        max_probabilities = self.predict_proba(mfcc=mfcc_).max(axis=1)
         y_true = np.zeros(shape=max_probabilities.shape, dtype=np.int32)
         for sample_idx in range(len(labels)):
             if (labels[sample_idx] != -1) and (labels[sample_idx] != '-1'):
                 y_true[sample_idx] = 1
-        best_threshold = 1e-2
-        y_pred = np.asarray(max_probabilities >= best_threshold, dtype=np.int32)
-        best_f1 = f1_score(y_true, y_pred)
-        cur_threshold = best_threshold + 1e-2
-        del y_pred
-        while cur_threshold < 1.0:
-            y_pred = np.asarray(max_probabilities >= cur_threshold, dtype=np.int32)
-            cur_f1 = f1_score(y_true, y_pred)
-            if cur_f1 > best_f1:
-                best_f1 = cur_f1
-                best_threshold = cur_threshold
-            cur_threshold += 1e-2
-        self.threshold_ = best_threshold
+        if y_true.min() == 1:
+            self.threshold_ = max_probabilities.min()
+        else:
+            best_threshold = 1e-2
+            y_pred = np.asarray(max_probabilities >= best_threshold, dtype=np.int32)
+            best_f1 = f1_score(y_true, y_pred)
+            cur_threshold = best_threshold + 1e-2
+            del y_pred
+            while cur_threshold < 1.0:
+                y_pred = np.asarray(max_probabilities >= cur_threshold, dtype=np.int32)
+                cur_f1 = f1_score(y_true, y_pred)
+                if cur_f1 > best_f1:
+                    best_f1 = cur_f1
+                    best_threshold = cur_threshold
+                cur_threshold += 1e-2
+            self.threshold_ = best_threshold
 
     def sounds_to_mfcc(self, sounds: Union[np.ndarray, List[np.ndarray]]) -> List[np.ndarray]:
         list_of_mfcc = []
