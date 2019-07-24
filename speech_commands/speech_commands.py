@@ -6,14 +6,13 @@ import tempfile
 import time
 from typing import List, Tuple, Union
 
-import keras
-import keras.backend as K
 import librosa
 from matplotlib.pyplot import cm
 import numpy as np
 from sklearn.base import ClassifierMixin, BaseEstimator
 from sklearn.metrics import f1_score
 from sklearn.utils.validation import check_is_fitted
+import tensorflow as tf
 
 
 class SoundRecognizer(ClassifierMixin, BaseEstimator):
@@ -69,34 +68,34 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             self.check_is_fitted()
             if hasattr(self, 'recognizer_'):
                 del self.recognizer_
-            input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
-            output_layer = keras.layers.Dense(
+            input_data = tf.keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
+            output_layer = tf.keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
-                kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(self.recognizer_.get_layer('ResNet_Base')(input_data))
-            self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
+                kernel_initializer=tf.keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
+            )(self.recognizer_.get_layer('MobileNet_Base')(input_data))
+            self.recognizer_ = tf.keras.models.Model(input_data, output_layer)
+            self.recognizer_.compile(optimizer=tf.keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         else:
             self.finalize_model()
             self.classes_ = classes_dict
             self.classes_reverse_ = classes_dict_reverse
-            input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
-            resnet = keras.applications.resnet50.ResNet50(
+            input_data = tf.keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
+            mobilenet = tf.keras.applications.mobilenet.MobileNet(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
                 input_tensor=input_data, pooling='avg')
-            resnet.name = 'RESNet_Base'
-            output_layer = keras.layers.Dense(
+            mobilenet.name = 'MobileNet_Base'
+            mobilenet.trainable = False
+            output_layer = tf.keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
-                kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(resnet(input_data))
-            self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
+                kernel_initializer=tf.keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
+            )(mobilenet(input_data))
+            self.recognizer_ = tf.keras.models.Model(input_data, output_layer)
+            self.recognizer_.compile(optimizer=tf.keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         if self.verbose:
             if self.cache_dir is not None:
                 print('Cache directory is `{0}`.'.format(self.cache_dir))
-            keras.utils.print_summary(self.recognizer_, line_length=120)
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
         class_freq = dict()
@@ -163,7 +162,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 shift_size=self.shift_size, sampling_frequency=self.sampling_frequency, classes=self.classes_,
                 sample_weight=sample_weight_for_validation, cache_dir_name=self.cache_dir, suffix='valid'
             )
-            early_stopping_callback = keras.callbacks.EarlyStopping(
+            early_stopping_callback = tf.keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
                 monitor='val_categorical_accuracy', mode='max'
             )
@@ -263,16 +262,14 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
     def finalize_model(self):
         if hasattr(self, 'recognizer_'):
             del self.recognizer_
-        K.clear_session()
+        tf.keras.backend.clear_session()
 
     def update_random_seed(self):
         if self.random_seed is None:
             self.random_seed = int(round(time.time()))
         random.seed(self.random_seed)
         np.random.seed(self.random_seed)
-        if K.backend() == 'tensorflow':
-            import tensorflow as tf
-            tf.random.set_random_seed(self.random_seed)
+        tf.random.set_random_seed(self.random_seed)
 
     def update_triangle_filters(self):
         n_fft = self.get_n_fft(self.sampling_frequency, self.window_size)
@@ -382,7 +379,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             try:
                 with open(model_file_name, 'wb') as fp:
                     fp.write(new_params['model_data_'])
-                self.recognizer_ = keras.models.load_model(model_file_name)
+                self.recognizer_ = tf.keras.models.load_model(model_file_name)
             finally:
                 if os.path.isfile(model_file_name):
                     os.remove(model_file_name)
@@ -643,7 +640,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         return best_threshold
 
 
-class TrainsetGenerator(keras.utils.Sequence):
+class TrainsetGenerator(tf.keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
                  batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
                  classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
@@ -706,7 +703,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         return np.asarray(spectrograms_as_images, dtype=np.float32), targets, sample_weights
 
 
-class DatasetGenerator(keras.utils.Sequence):
+class DatasetGenerator(tf.keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], batch_size: int, window_size: float, shift_size: float,
                  sampling_frequency: int, melfb: np.ndarray, indices: Union[np.ndarray, List[int], None]=None):
         self.X = X
