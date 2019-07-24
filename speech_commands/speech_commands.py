@@ -99,16 +99,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             keras.utils.print_summary(self.recognizer_, line_length=120)
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
-        class_freq = dict()
-        freq_sum = 0
-        for cur in y:
-            if cur != -1:
-                class_freq[cur] = class_freq.get(cur, 0) + 1
-                freq_sum += 1
         if self.verbose:
-            print('Class weights:')
-            for cur in sorted(list(class_freq.keys())):
-                print('  - {0}: {1:.6f}'.format(cur, float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum)))
             print('Sampling frequency is {0} Hz.'.format(self.sampling_frequency))
         if 'sample_weight' in kwargs:
             sample_weight = kwargs['sample_weight']
