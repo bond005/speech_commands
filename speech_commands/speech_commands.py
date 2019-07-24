@@ -106,7 +106,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         trainset_generator = TrainsetGenerator(
             X=X, y=y, batch_size=self.batch_size, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
-            classes=self.classes_, sample_weight=sample_weight, cache_dir_name=self.cache_dir, suffix='train'
+            classes=self.classes_, sample_weight=sample_weight, cache_dir_name=self.cache_dir, suffix='train',
+            use_augmentation=True
         )
         if (X_val is None) or (y_val is None):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
