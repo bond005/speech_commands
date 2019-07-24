@@ -84,8 +84,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             mobilenet = tf.keras.applications.mobilenet.MobileNet(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
                 input_tensor=input_data, pooling='avg')
-            mobilenet.name = 'MobileNet_Base'
-            mobilenet.trainable = False
             output_layer = tf.keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=tf.keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
