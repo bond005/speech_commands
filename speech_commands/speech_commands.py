@@ -696,7 +696,6 @@ class TrainsetGenerator(keras.utils.Sequence):
                             np.random.uniform(
                                 0.0, 1.0,
                                 (
-                                    spectrograms_as_images.shape[0],
                                     spectrogram_size,
                                     spectrograms_as_images.shape[2],
                                     spectrograms_as_images.shape[3]
@@ -704,7 +703,6 @@ class TrainsetGenerator(keras.utils.Sequence):
                             ),
                             np.zeros(
                                 (
-                                    spectrograms_as_images.shape[0],
                                     spectrograms_as_images.shape[1] - spectrogram_size,
                                     spectrograms_as_images.shape[2],
                                     spectrograms_as_images.shape[3]
@@ -717,7 +715,6 @@ class TrainsetGenerator(keras.utils.Sequence):
                     random_noise = np.random.uniform(
                         0.0, 1.0,
                         (
-                            spectrograms_as_images.shape[0],
                             spectrogram_size,
                             spectrograms_as_images.shape[2],
                             spectrograms_as_images.shape[3]
