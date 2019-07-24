@@ -634,15 +634,16 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
         self.classes = classes
-        self.use_augmentation = use_augmentation
         self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
-        self.image_augmenator = keras.preprocessing.image.ImageDataGenerator(
-            rotation_range=5,
-            width_shift_range=0.2,
-            height_shift_range=0.2,
-            zoom_range=0.2,
-            dtype=np.float32
-        )
+        if use_augmentation:
+            self.image_augmenator = keras.preprocessing.image.ImageDataGenerator(
+                width_shift_range=0.2,
+                height_shift_range=0.2,
+                zoom_range=0.2,
+                dtype=np.float32
+            )
+        else:
+            self.image_augmenator = None
         assert len(self.indices) > 2
         assert min(self.indices) >= 0
         assert max(self.indices) < len(y)
@@ -684,11 +685,13 @@ class TrainsetGenerator(keras.utils.Sequence):
                 normalized_spectrograms, targets = pickle.load(fp)
         spectrograms_as_images = SoundRecognizer.spectrograms_to_images(normalized_spectrograms)
         del normalized_spectrograms
-        if self.use_augmentation:
+        if self.image_augmenator is not None:
             for sample_idx in range(spectrograms_as_images.shape[0]):
                 spectrograms_as_images[sample_idx] = self.image_augmenator.random_transform(
                     spectrograms_as_images[sample_idx]
                 )
+                random_noise = np.random.uniform(0.0, 1.0, spectrograms_as_images[sample_idx].shape)
+                spectrograms_as_images[sample_idx] = 0.95 * spectrograms_as_images[sample_idx] + 0.05 * random_noise
         if self.sample_weight is None:
             return spectrograms_as_images, targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
