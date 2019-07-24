@@ -794,7 +794,6 @@ class DatasetGenerator(keras.utils.Sequence):
 
 class DTWRecognizer(ClassifierMixin, BaseEstimator):
     N_MELS = 40
-    N_CEPS = 12
 
     def __init__(self, k: int=3, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
                  warm_start: bool=False, verbose: bool=False):
@@ -823,13 +822,13 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
             if hasattr(self, 'patterns_'):
                 del self.patterns_
             self.patterns_ = dict()
-        mfcc = self.sounds_to_mfcc(X)
-        for sample_idx in range(len(mfcc)):
+        melspecgrams = self.sounds_to_melspecgrams(X)
+        for sample_idx in range(len(melspecgrams)):
             if (y[sample_idx] != -1) and (y[sample_idx] != '-1'):
                 if y[sample_idx] in self.patterns_:
-                    self.patterns_[y[sample_idx]].append(mfcc[sample_idx])
+                    self.patterns_[y[sample_idx]].append(melspecgrams[sample_idx])
                 else:
-                    self.patterns_[y[sample_idx]] = [mfcc[sample_idx]]
+                    self.patterns_[y[sample_idx]] = [melspecgrams[sample_idx]]
         for class_name in self.patterns_.keys():
             if len(self.patterns_[class_name]) < self.k:
                 raise ValueError('There are too few sounds for the class `{0}!` Minimal number of sounds is {1}, '
@@ -839,7 +838,7 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
             print('Classes for recognition:')
             for class_name in sorted(list(self.patterns_.keys())):
                 print('  - {0} ({1} sounds);'.format(class_name, len(self.patterns_[class_name])))
-        self.update_threshold(mfcc=mfcc, labels=y)
+        self.update_threshold(melspecgrams=melspecgrams, labels=y)
         return self
 
     def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
@@ -858,37 +857,38 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, warm_start=self.warm_start, verbose=self.verbose, k=self.k)
         self.check_is_fitted()
-        if 'mfcc' in kwargs:
-            if not isinstance(kwargs['mfcc'], list):
-                raise ValueError('MFCC are wrong! Expected a list of MFCC, but got a `{0}!`'.format(
-                    type(kwargs['mfcc'])))
-            for sound_idx in range(len(kwargs['mfcc'])):
-                if not isinstance(kwargs['mfcc'][sound_idx], np.ndarray):
-                    raise ValueError('Item {0} of the MFCC list is wrong! Expected a `{1}`, but got a `{2}`!'.format(
-                        sound_idx, type(np.array([1, 2])), type(kwargs['mfcc'][sound_idx])))
-                if len(kwargs['mfcc'][sound_idx].shape) != 2:
-                    raise ValueError('Item {0} of the MFCC list is wrong! Expected a 2-D array, but got a '
-                                     '{1}-D one!`'.format(sound_idx, len(kwargs['mfcc'][sound_idx].shape)))
-                if kwargs['mfcc'][sound_idx].shape[0] != self.N_CEPS:
-                    raise ValueError('Item {0} of the MFCC list is wrong, because number of MFCC does not equal to '
-                                     '{1}!'.format(sound_idx, self.N_CEPS))
-            input_mfcc = kwargs['mfcc']
+        if 'melspecgrams' in kwargs:
+            if not isinstance(kwargs['melspecgrams'], list):
+                raise ValueError('Mel-spectrograms are wrong! Expected a list of mel-spectrograms, but got a '
+                                 '`{0}!`'.format(type(kwargs['melspecgrams'])))
+            for sound_idx in range(len(kwargs['melspecgrams'])):
+                if not isinstance(kwargs['melspecgrams'][sound_idx], np.ndarray):
+                    raise ValueError('Item {0} of the mel-spectrograms list is wrong! Expected a `{1}`, but got a '
+                                     '`{2}`!'.format(sound_idx, type(np.array([1, 2])),
+                                                     type(kwargs['melspecgrams'][sound_idx])))
+                if len(kwargs['melspecgrams'][sound_idx].shape) != 2:
+                    raise ValueError('Item {0} of the mel-spectrograms list is wrong! Expected a 2-D array, but got a '
+                                     '{1}-D one!`'.format(sound_idx, len(kwargs['melspecgrams'][sound_idx].shape)))
+                if kwargs['melspecgrams'][sound_idx].shape[0] != self.N_MELS:
+                    raise ValueError('Item {0} of the melspecgrams list is wrong, because number of mel-spectrograms '
+                                     'does not equal to {1}!'.format(sound_idx, self.N_MELS))
+            input_melspecgrams = kwargs['melspecgrams']
         else:
             if X is None:
                 raise ValueError('Input data are not specified!')
             MobilenetRecognizer.check_X(X, 'X')
-            input_mfcc = self.sounds_to_mfcc(X)
-        res = np.empty((len(input_mfcc), len(self.classes_)))
+            input_melspecgrams = self.sounds_to_melspecgrams(X)
+        res = np.empty((len(input_melspecgrams), len(self.classes_)))
         for sound_idx in range(res.shape[0]):
             for class_name in self.classes_:
                 class_idx = self.classes_[class_name]
                 distances = []
-                D, wp = librosa.sequence.dtw(input_mfcc[sound_idx], self.patterns_[class_name][0])
-                distances.append(D[len(input_mfcc[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
+                D, wp = librosa.sequence.dtw(input_melspecgrams[sound_idx], self.patterns_[class_name][0])
+                distances.append(D[len(input_melspecgrams[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
                 del D, wp
                 for pattern in self.patterns_[class_name][1:]:
-                    D, wp = librosa.sequence.dtw(input_mfcc[sound_idx], pattern)
-                    distances.append(D[len(input_mfcc[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
+                    D, wp = librosa.sequence.dtw(input_melspecgrams[sound_idx], pattern)
+                    distances.append(D[len(input_melspecgrams[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
                 distances.sort()
                 res[sound_idx][class_idx] = sum(map(lambda it: 1.0 / (it * it + 1e-9), distances))
             res[sound_idx] /= res[sound_idx].sum()
@@ -911,16 +911,16 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
 
     def update_threshold(self, labels: Union[np.ndarray, List[int], List[str]],
                          sounds: Union[np.ndarray, List[np.ndarray], None]=None,
-                         mfcc: Union[List[np.ndarray], None]=None):
-        if (sounds is None) and (mfcc is None):
-            raise ValueError('Neither sounds nor mfcc are specified!')
-        if mfcc is None:
-            mfcc_ = self.sounds_to_mfcc(sounds)
+                         melspecgrams: Union[List[np.ndarray], None]=None):
+        if (sounds is None) and (melspecgrams is None):
+            raise ValueError('Neither sounds nor melspecgrams are specified!')
+        if melspecgrams is None:
+            melspecgrams_ = self.sounds_to_melspecgrams(sounds)
         else:
-            mfcc_ = mfcc
+            melspecgrams_ = melspecgrams
         self.threshold_ = 0.0
         self.check_is_fitted()
-        max_probabilities = self.predict_proba(mfcc=mfcc_).max(axis=1)
+        max_probabilities = self.predict_proba(melspecgrams=melspecgrams_).max(axis=1)
         y_true = np.zeros(shape=max_probabilities.shape, dtype=np.int32)
         for sample_idx in range(len(labels)):
             if (labels[sample_idx] != -1) and (labels[sample_idx] != '-1'):
@@ -944,8 +944,8 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
         if self.verbose:
             print('Best threshold of probability is {0:.2f}.'.format(self.threshold_))
 
-    def sounds_to_mfcc(self, sounds: Union[np.ndarray, List[np.ndarray]]) -> List[np.ndarray]:
-        list_of_mfcc = []
+    def sounds_to_melspecgrams(self, sounds: Union[np.ndarray, List[np.ndarray]]) -> List[np.ndarray]:
+        list_of_melspecgrams = []
         n_window = int(round(self.sampling_frequency * self.window_size))
         n_shift = int(round(self.sampling_frequency * self.shift_size))
         n_fft = MobilenetRecognizer.get_n_fft(self.sampling_frequency, self.window_size)
@@ -956,8 +956,24 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
                                          window='hamming')
             specgram = np.asarray(np.absolute(specgram), dtype=np.float64)
             mel_specgram = np.dot(self.melfb_, specgram)
-            list_of_mfcc.append(librosa.feature.mfcc(S=librosa.power_to_db(mel_specgram), n_mfcc=self.N_CEPS))
-        return list_of_mfcc
+            values = mel_specgram.reshape((mel_specgram.shape[0] * mel_specgram.shape[1],))
+            values = np.sort(values)
+            n = int(round(0.02 * (len(values) - 1)))
+            min_value = values[n]
+            max_value = values[-n]
+            del values
+            if max_value > min_value:
+                mel_specgram = (mel_specgram - min_value) / (max_value - min_value)
+                for row_idx in range(mel_specgram.shape[0]):
+                    for col_idx in range(mel_specgram.shape[1]):
+                        if mel_specgram[row_idx][col_idx] < 0.0:
+                            mel_specgram[row_idx][col_idx] = 0.0
+                        elif mel_specgram[row_idx][col_idx] > 1.0:
+                            mel_specgram[row_idx][col_idx] = 1.0
+            else:
+                mel_specgram = np.zeros(shape=mel_specgram.shape, dtype=mel_specgram.dtype)
+            list_of_melspecgrams.append(mel_specgram)
+        return list_of_melspecgrams
 
     def update_triangle_filters(self):
         n_fft = MobilenetRecognizer.get_n_fft(self.sampling_frequency, self.window_size)
