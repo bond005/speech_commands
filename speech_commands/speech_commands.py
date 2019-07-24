@@ -75,7 +75,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
             )(self.recognizer_.get_layer('MobileNet_Base')(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-3), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         else:
             self.finalize_model()
@@ -86,13 +86,12 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
                 input_tensor=input_data, pooling='avg')
             mobilenet.name = 'MobileNet_Base'
-            mobilenet.trainable = False
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
             )(mobilenet(input_data))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-3), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
         if self.verbose:
             if self.cache_dir is not None:
@@ -112,11 +111,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                 print('  - {0}: {1:.6f}'.format(cur, float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum)))
             print('Sampling frequency is {0} Hz.'.format(self.sampling_frequency))
         if 'sample_weight' in kwargs:
-            if kwargs['sample_weight'] == 'balanced':
-                sample_weight = np.array([float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y],
-                                         dtype=np.float32)
-            else:
-                sample_weight = kwargs['sample_weight']
+            sample_weight = kwargs['sample_weight']
         else:
             sample_weight = None
         trainset_generator = TrainsetGenerator(
@@ -149,20 +144,10 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                                      sampling_frequency=self.sampling_frequency)
                 ).max(axis=1).min()
         else:
-            if 'sample_weight' in kwargs:
-                if kwargs['sample_weight'] == 'balanced':
-                    sample_weight_for_validation = np.array(
-                        [float(2 * freq_sum - class_freq.get(cur, 0)) / float(freq_sum) for cur in y_val],
-                        dtype=np.float32
-                    )
-                else:
-                    sample_weight_for_validation = kwargs['sample_weight']
-            else:
-                sample_weight_for_validation = None
             validset_generator = TrainsetGenerator(
                 X=X_val, y=y_val, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
                 shift_size=self.shift_size, sampling_frequency=self.sampling_frequency, classes=self.classes_,
-                sample_weight=sample_weight_for_validation, cache_dir_name=self.cache_dir, suffix='valid'
+                sample_weight=None, cache_dir_name=self.cache_dir, suffix='valid'
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
