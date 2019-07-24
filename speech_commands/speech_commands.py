@@ -883,11 +883,12 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
             for class_name in self.classes_:
                 class_idx = self.classes_[class_name]
                 distances = []
-                D, wp = librosa.sequence.dtw(input_melspecgrams[sound_idx], self.patterns_[class_name][0])
+                D, wp = librosa.sequence.dtw(input_melspecgrams[sound_idx], self.patterns_[class_name][0],
+                                             metric='cosine')
                 distances.append(D[len(input_melspecgrams[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
                 del D, wp
                 for pattern in self.patterns_[class_name][1:]:
-                    D, wp = librosa.sequence.dtw(input_melspecgrams[sound_idx], pattern)
+                    D, wp = librosa.sequence.dtw(input_melspecgrams[sound_idx], pattern, metric='cosine')
                     distances.append(D[len(input_melspecgrams[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
                 distances.sort()
                 res[sound_idx][class_idx] = sum(map(lambda it: 1.0 / (it * it + 1e-9), distances))
