@@ -16,334 +16,6 @@ from sklearn.metrics import f1_score
 from sklearn.utils.validation import check_is_fitted
 
 
-class DTWRecognizer(ClassifierMixin, BaseEstimator):
-    N_MELS = 40
-    N_CEPS = 12
-
-    def __init__(self, k: int=3, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
-                 warm_start: bool=False, verbose: bool=False):
-        self.sampling_frequency = sampling_frequency
-        self.window_size = window_size
-        self.shift_size = shift_size
-        self.verbose = verbose
-        self.warm_start = warm_start
-        self.k = k
-
-    def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
-        self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
-                          shift_size=self.shift_size,warm_start=self.warm_start, verbose=self.verbose, k=self.k)
-        classes_dict, classes_dict_reverse = MobilenetRecognizer.check_Xy(X, 'X', y, 'y')
-        if self.warm_start:
-            self.check_is_fitted()
-            class_idx = len(self.classes_)
-            for cur in classes_dict:
-                if cur not in self.classes_:
-                    self.classes_[cur] = class_idx
-                    class_idx += 1
-                    self.classes_reverse_.append(cur)
-        else:
-            self.classes_ = classes_dict
-            self.classes_reverse_ = classes_dict_reverse
-            if hasattr(self, 'patterns_'):
-                del self.patterns_
-            self.patterns_ = dict()
-        mfcc = self.sounds_to_mfcc(X)
-        for sample_idx in range(len(mfcc)):
-            if (y[sample_idx] != -1) and (y[sample_idx] != '-1'):
-                if y[sample_idx] in self.patterns_:
-                    self.patterns_[y[sample_idx]].append(mfcc[sample_idx])
-                else:
-                    self.patterns_[y[sample_idx]] = [mfcc[sample_idx]]
-        for class_name in self.patterns_.keys():
-            if len(self.patterns_[class_name]) < self.k:
-                raise ValueError('There are too few sounds for the class `{0}!` Minimal number of sounds is {1}, '
-                                 'but now there are only {2} sounds.'.format(class_name, self.k,
-                                                                             len(self.patterns_[class_name])))
-        if self.verbose:
-            print('Classes for recognition:')
-            for class_name in sorted(list(self.patterns_.keys())):
-                print('  - {0} ({1} sounds);'.format(class_name, len(self.patterns_[class_name])))
-        self.update_threshold(mfcc=mfcc, labels=y)
-        return self
-
-    def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
-        probabilities = self.predict_proba(X=X)
-        indices_of_classes = probabilities.argmax(axis=1)
-        max_probabilities = probabilities.max(axis=1)
-        res = []
-        for idx in range(probabilities.shape[0]):
-            if max_probabilities[idx] < self.threshold_:
-                res.append(-1)
-            else:
-                res.append(self.classes_reverse_[indices_of_classes[idx]])
-        return np.array(res, dtype=object)
-
-    def predict_proba(self, X: Union[np.ndarray, List[np.ndarray], None]=None, **kwargs) -> np.ndarray:
-        self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
-                          shift_size=self.shift_size, warm_start=self.warm_start, verbose=self.verbose, k=self.k)
-        self.check_is_fitted()
-        if 'mfcc' in kwargs:
-            if not isinstance(kwargs['mfcc'], list):
-                raise ValueError('MFCC are wrong! Expected a list of MFCC, but got a `{0}!`'.format(
-                    type(kwargs['mfcc'])))
-            for sound_idx in range(len(kwargs['mfcc'])):
-                if not isinstance(kwargs['mfcc'][sound_idx], np.ndarray):
-                    raise ValueError('Item {0} of the MFCC list is wrong! Expected a `{1}`, but got a `{2}`!'.format(
-                        sound_idx, type(np.array([1, 2])), type(kwargs['mfcc'][sound_idx])))
-                if len(kwargs['mfcc'][sound_idx].shape) != 2:
-                    raise ValueError('Item {0} of the MFCC list is wrong! Expected a 2-D array, but got a '
-                                     '{1}-D one!`'.format(sound_idx, len(kwargs['mfcc'][sound_idx].shape)))
-                if kwargs['mfcc'][sound_idx].shape[0] != self.N_CEPS:
-                    raise ValueError('Item {0} of the MFCC list is wrong, because number of MFCC does not equal to '
-                                     '{1}!'.format(sound_idx, self.N_CEPS))
-            input_mfcc = kwargs['mfcc']
-        else:
-            if X is None:
-                raise ValueError('Input data are not specified!')
-            MobilenetRecognizer.check_X(X, 'X')
-            input_mfcc = self.sounds_to_mfcc(X)
-        res = np.empty((len(input_mfcc), len(self.classes_)))
-        for sound_idx in range(res.shape[0]):
-            for class_name in self.classes_:
-                class_idx = self.classes_[class_name]
-                distances = []
-                D, wp = librosa.sequence.dtw(input_mfcc[sound_idx], self.patterns_[class_name][0])
-                distances.append(D[len(input_mfcc[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
-                del D, wp
-                for pattern in self.patterns_[class_name][1:]:
-                    D, wp = librosa.sequence.dtw(input_mfcc[sound_idx], pattern)
-                    distances.append(D[len(input_mfcc[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
-                distances.sort()
-                res[sound_idx][class_idx] = sum(map(lambda it: 1.0 / (it * it + 1e-9), distances))
-            res[sound_idx] /= res[sound_idx].sum()
-        return res
-
-    def predict_log_proba(self, X: Union[list, tuple, np.ndarray]) -> np.ndarray:
-        return np.log(np.asarray(self.predict_proba(X), dtype=np.float64) + 1e-9)
-
-    def score(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
-              sample_weight: Union[list, tuple, np.ndarray, None] = None) -> float:
-        y_pred = self.predict(X)
-        return f1_score(y, y_pred, average='macro', sample_weight=sample_weight)
-
-    def fit_predict(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
-                    sample_weight: Union[list, tuple, np.ndarray, None]=None, **kwargs):
-        return self.fit(X, y)
-
-    def check_is_fitted(self):
-        check_is_fitted(self, ['patterns_', 'classes_', 'classes_reverse_', 'threshold_'])
-
-    def update_threshold(self, labels: Union[np.ndarray, List[int], List[str]],
-                         sounds: Union[np.ndarray, List[np.ndarray], None]=None,
-                         mfcc: Union[List[np.ndarray], None]=None):
-        if (sounds is None) and (mfcc is None):
-            raise ValueError('Neither sounds nor mfcc are specified!')
-        if mfcc is None:
-            mfcc_ = self.sounds_to_mfcc(sounds)
-        else:
-            mfcc_ = mfcc
-        self.threshold_ = 0.0
-        self.check_is_fitted()
-        max_probabilities = self.predict_proba(mfcc=mfcc_).max(axis=1)
-        y_true = np.zeros(shape=max_probabilities.shape, dtype=np.int32)
-        for sample_idx in range(len(labels)):
-            if (labels[sample_idx] != -1) and (labels[sample_idx] != '-1'):
-                y_true[sample_idx] = 1
-        if y_true.min() == 1:
-            self.threshold_ = max_probabilities.min()
-        else:
-            best_threshold = 1e-2
-            y_pred = np.asarray(max_probabilities >= best_threshold, dtype=np.int32)
-            best_f1 = f1_score(y_true, y_pred)
-            cur_threshold = best_threshold + 1e-2
-            del y_pred
-            while cur_threshold < 1.0:
-                y_pred = np.asarray(max_probabilities >= cur_threshold, dtype=np.int32)
-                cur_f1 = f1_score(y_true, y_pred)
-                if cur_f1 > best_f1:
-                    best_f1 = cur_f1
-                    best_threshold = cur_threshold
-                cur_threshold += 1e-2
-            self.threshold_ = best_threshold
-
-    def sounds_to_mfcc(self, sounds: Union[np.ndarray, List[np.ndarray]]) -> List[np.ndarray]:
-        list_of_mfcc = []
-        n_window = int(round(self.sampling_frequency * self.window_size))
-        n_shift = int(round(self.sampling_frequency * self.shift_size))
-        n_fft = MobilenetRecognizer.get_n_fft(self.sampling_frequency, self.window_size)
-        if not hasattr(self, 'melfb_'):
-            self.update_triangle_filters()
-        for sound_idx in range(sounds.shape[0] if isinstance(sounds, np.ndarray) else len(sounds)):
-            specgram = librosa.core.stft(y=sounds[sound_idx], n_fft=n_fft, hop_length=n_shift, win_length=n_window,
-                                         window='hamming')
-            specgram = np.asarray(np.absolute(specgram), dtype=np.float64)
-            mel_specgram = np.dot(self.melfb_, specgram)
-            list_of_mfcc.append(librosa.feature.mfcc(S=librosa.power_to_db(mel_specgram), n_mfcc=self.N_CEPS))
-        return list_of_mfcc
-
-    def update_triangle_filters(self):
-        n_fft = MobilenetRecognizer.get_n_fft(self.sampling_frequency, self.window_size)
-        if hasattr(self, 'melfb_'):
-            del self.melfb_
-        self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.N_MELS,
-                                          fmin=350.0, fmax=6000.0)
-
-    @staticmethod
-    def check_params(**kwargs):
-        if 'sampling_frequency' not in kwargs:
-            raise ValueError('`sampling_frequency` is not specified!')
-        if (not isinstance(kwargs['sampling_frequency'], int)) and \
-                (not isinstance(kwargs['sampling_frequency'], np.int32)) and \
-                (not isinstance(kwargs['sampling_frequency'], np.uint32)):
-            raise ValueError('`sampling_frequency` is wrong! Expected `{0}`, got `{1}`.'.format(
-                type(3), type(kwargs['sampling_frequency'])))
-        if kwargs['sampling_frequency'] < 1:
-            raise ValueError('`sampling_frequency` is wrong! Expected a positive integer value, '
-                             'but {0} is not positive.'.format(kwargs['sampling_frequency']))
-        if kwargs['sampling_frequency'] < 16000:
-            raise ValueError('`sampling_frequency` is wrong! Minimal admissible value is 16000 Hz.')
-        if 'window_size' not in kwargs:
-            raise ValueError('`window_size` is not specified!')
-        if (not isinstance(kwargs['window_size'], float)) and \
-                (not isinstance(kwargs['window_size'], np.float32)) and \
-                (not isinstance(kwargs['window_size'], np.float64)):
-            raise ValueError('`window_size` is wrong! Expected `{0}`, got `{1}`.'.format(
-                type(3.5), type(kwargs['window_size'])))
-        if kwargs['window_size'] <= 0.0:
-            raise ValueError('`window_size` is wrong! Expected a positive floating-point value, '
-                             'but {0} is not positive.'.format(kwargs['window_size']))
-        n_window = int(round(kwargs['sampling_frequency'] * kwargs['window_size']))
-        if n_window < 10:
-            raise ValueError('`window_size` is wrong! {0:.6f} is too small value for `window_size`.'.format(
-                kwargs['window_size']))
-        if 'shift_size' not in kwargs:
-            raise ValueError('`shift_size` is not specified!')
-        if (not isinstance(kwargs['shift_size'], float)) and \
-                (not isinstance(kwargs['shift_size'], np.float32)) and \
-                (not isinstance(kwargs['shift_size'], np.float64)):
-            raise ValueError('`shift_size` is wrong! Expected `{0}`, got `{1}`.'.format(
-                type(3.5), type(kwargs['shift_size'])))
-        if kwargs['shift_size'] <= 0.0:
-            raise ValueError('`shift_size` is wrong! Expected a positive floating-point value, '
-                             'but {0} is not positive.'.format(kwargs['shift_size']))
-        n_shift = int(round(kwargs['sampling_frequency'] * kwargs['shift_size']))
-        if n_shift < 5:
-            raise ValueError('`shift_size` is wrong! {0:.6f} is too small value for `shift_size`.'.format(
-                kwargs['shift_size']))
-        if 'verbose' not in kwargs:
-            raise ValueError('`verbose` is not specified!')
-        if (not isinstance(kwargs['verbose'], int)) and (not isinstance(kwargs['verbose'], np.int32)) and \
-                (not isinstance(kwargs['verbose'], np.uint32)) and \
-                (not isinstance(kwargs['verbose'], bool)) and (not isinstance(kwargs['verbose'], np.bool)):
-            raise ValueError('`verbose` is wrong! Expected `{0}`, got `{1}`.'.format(
-                type(True), type(kwargs['verbose'])))
-        if 'warm_start' not in kwargs:
-            raise ValueError('`warm_start` is not specified!')
-        if (not isinstance(kwargs['warm_start'], int)) and (not isinstance(kwargs['warm_start'], np.int32)) and \
-                (not isinstance(kwargs['warm_start'], np.uint32)) and \
-                (not isinstance(kwargs['warm_start'], bool)) and (not isinstance(kwargs['warm_start'], np.bool)):
-            raise ValueError('`warm_start` is wrong! Expected `{0}`, got `{1}`.'.format(
-                type(True), type(kwargs['warm_start'])))
-        if 'k' not in kwargs:
-            raise ValueError('`k` is not specified!')
-        if (not isinstance(kwargs['k'], int)) and \
-                (not isinstance(kwargs['k'], np.int32)) and \
-                (not isinstance(kwargs['k'], np.uint32)):
-            raise ValueError('`k` is wrong! Expected `{0}`, got `{1}`.'.format(type(3), type(kwargs['k'])))
-        if kwargs['k'] < 1:
-            raise ValueError('`k` is wrong! Expected a positive integer value, '
-                             'but {0} is not positive.'.format(kwargs['k']))
-
-    def get_params(self, deep=True):
-        return {'sampling_frequency': self.sampling_frequency, 'window_size': self.window_size,
-                'shift_size': self.shift_size, 'k': self.k, 'verbose': self.verbose, 'warm_start': self.warm_start}
-
-    def set_params(self, **params):
-        for parameter, value in params.items():
-            self.__setattr__(parameter, value)
-        return self
-
-    def __copy__(self):
-        cls = self.__class__
-        result = cls.__new__(cls)
-        result.set_params(
-            sampling_frequency=self.sampling_frequency, window_size=self.window_size, shift_size=self.shift_size,
-            k=self.k, warm_start=self.warm_start, verbose=self.verbose
-        )
-        try:
-            self.check_is_fitted()
-            is_fitted = True
-        except:
-            is_fitted = False
-        if is_fitted:
-            result.classes_ = copy.copy(self.classes_)
-            result.classes_reverse_ = copy.copy(self.classes_reverse_)
-            result.patterns_ = copy.copy(self.patterns_)
-        return result
-
-    def __deepcopy__(self, memodict={}):
-        cls = self.__class__
-        result = cls.__new__(cls)
-        result.set_params(
-            sampling_frequency=self.sampling_frequency, window_size=self.window_size, shift_size=self.shift_size,
-            k=self.k, warm_start=self.warm_start, verbose=self.verbose
-        )
-        try:
-            self.check_is_fitted()
-            is_fitted = True
-        except:
-            is_fitted = False
-        if is_fitted:
-            result.classes_ = copy.deepcopy(self.classes_)
-            result.classes_reverse_ = copy.deepcopy(self.classes_reverse_)
-            result.patterns_ = copy.deepcopy(self.patterns_)
-        return result
-
-    def __getstate__(self):
-        return self.dump_all()
-
-    def __setstate__(self, state: dict):
-        self.load_all(state)
-
-    def dump_all(self):
-        try:
-            self.check_is_fitted()
-            is_fitted = True
-        except:
-            is_fitted = False
-        params = self.get_params(True)
-        if is_fitted:
-            params['classes_'] = copy.deepcopy(self.classes_)
-            params['classes_reverse_'] = copy.deepcopy(self.classes_reverse_)
-            params['threshold_'] = self.threshold_
-            params['patterns_'] = copy.deepcopy(self.patterns_)
-        return params
-
-    def load_all(self, new_params: dict):
-        if not isinstance(new_params, dict):
-            raise ValueError('`new_params` is wrong! Expected `{0}`, got `{1}`.'.format(type({0: 1}), type(new_params)))
-        self.check_params(**new_params)
-        is_fitted = ('classes_' in new_params) and ('classes_reverse_' in new_params) and \
-                    ('threshold_' in new_params) and ('patterns_' in new_params)
-        if is_fitted:
-            self.set_params(**new_params)
-            self.classes_reverse_ = copy.deepcopy(new_params['classes_reverse_'])
-            self.classes_ = copy.deepcopy(new_params['classes_'])
-            self.threshold_ = new_params['threshold_']
-            self.patterns_ = new_params['patterns_']
-        else:
-            self.set_params(**new_params)
-            if hasattr(self, 'patterns_'):
-                del self.patterns_
-            if hasattr(self, 'classes_reverse_'):
-                del self.classes_reverse_
-            if hasattr(self, 'classes_'):
-                del self.classes_
-            if hasattr(self, 'threshold_'):
-                del self.threshold_
-        return self
-
-
 class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     COLORMAP = cm.get_cmap('jet')
     IMAGESIZE = (224, 224)
@@ -1116,3 +788,331 @@ class DatasetGenerator(keras.utils.Sequence):
         else:
             n_samples = len(self.indices)
         return n_samples
+
+
+class DTWRecognizer(ClassifierMixin, BaseEstimator):
+    N_MELS = 40
+    N_CEPS = 12
+
+    def __init__(self, k: int=3, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
+                 warm_start: bool=False, verbose: bool=False):
+        self.sampling_frequency = sampling_frequency
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.verbose = verbose
+        self.warm_start = warm_start
+        self.k = k
+
+    def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
+        self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
+                          shift_size=self.shift_size,warm_start=self.warm_start, verbose=self.verbose, k=self.k)
+        classes_dict, classes_dict_reverse = MobilenetRecognizer.check_Xy(X, 'X', y, 'y')
+        if self.warm_start:
+            self.check_is_fitted()
+            class_idx = len(self.classes_)
+            for cur in classes_dict:
+                if cur not in self.classes_:
+                    self.classes_[cur] = class_idx
+                    class_idx += 1
+                    self.classes_reverse_.append(cur)
+        else:
+            self.classes_ = classes_dict
+            self.classes_reverse_ = classes_dict_reverse
+            if hasattr(self, 'patterns_'):
+                del self.patterns_
+            self.patterns_ = dict()
+        mfcc = self.sounds_to_mfcc(X)
+        for sample_idx in range(len(mfcc)):
+            if (y[sample_idx] != -1) and (y[sample_idx] != '-1'):
+                if y[sample_idx] in self.patterns_:
+                    self.patterns_[y[sample_idx]].append(mfcc[sample_idx])
+                else:
+                    self.patterns_[y[sample_idx]] = [mfcc[sample_idx]]
+        for class_name in self.patterns_.keys():
+            if len(self.patterns_[class_name]) < self.k:
+                raise ValueError('There are too few sounds for the class `{0}!` Minimal number of sounds is {1}, '
+                                 'but now there are only {2} sounds.'.format(class_name, self.k,
+                                                                             len(self.patterns_[class_name])))
+        if self.verbose:
+            print('Classes for recognition:')
+            for class_name in sorted(list(self.patterns_.keys())):
+                print('  - {0} ({1} sounds);'.format(class_name, len(self.patterns_[class_name])))
+        self.update_threshold(mfcc=mfcc, labels=y)
+        return self
+
+    def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
+        probabilities = self.predict_proba(X=X)
+        indices_of_classes = probabilities.argmax(axis=1)
+        max_probabilities = probabilities.max(axis=1)
+        res = []
+        for idx in range(probabilities.shape[0]):
+            if max_probabilities[idx] < self.threshold_:
+                res.append(-1)
+            else:
+                res.append(self.classes_reverse_[indices_of_classes[idx]])
+        return np.array(res, dtype=object)
+
+    def predict_proba(self, X: Union[np.ndarray, List[np.ndarray], None]=None, **kwargs) -> np.ndarray:
+        self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
+                          shift_size=self.shift_size, warm_start=self.warm_start, verbose=self.verbose, k=self.k)
+        self.check_is_fitted()
+        if 'mfcc' in kwargs:
+            if not isinstance(kwargs['mfcc'], list):
+                raise ValueError('MFCC are wrong! Expected a list of MFCC, but got a `{0}!`'.format(
+                    type(kwargs['mfcc'])))
+            for sound_idx in range(len(kwargs['mfcc'])):
+                if not isinstance(kwargs['mfcc'][sound_idx], np.ndarray):
+                    raise ValueError('Item {0} of the MFCC list is wrong! Expected a `{1}`, but got a `{2}`!'.format(
+                        sound_idx, type(np.array([1, 2])), type(kwargs['mfcc'][sound_idx])))
+                if len(kwargs['mfcc'][sound_idx].shape) != 2:
+                    raise ValueError('Item {0} of the MFCC list is wrong! Expected a 2-D array, but got a '
+                                     '{1}-D one!`'.format(sound_idx, len(kwargs['mfcc'][sound_idx].shape)))
+                if kwargs['mfcc'][sound_idx].shape[0] != self.N_CEPS:
+                    raise ValueError('Item {0} of the MFCC list is wrong, because number of MFCC does not equal to '
+                                     '{1}!'.format(sound_idx, self.N_CEPS))
+            input_mfcc = kwargs['mfcc']
+        else:
+            if X is None:
+                raise ValueError('Input data are not specified!')
+            MobilenetRecognizer.check_X(X, 'X')
+            input_mfcc = self.sounds_to_mfcc(X)
+        res = np.empty((len(input_mfcc), len(self.classes_)))
+        for sound_idx in range(res.shape[0]):
+            for class_name in self.classes_:
+                class_idx = self.classes_[class_name]
+                distances = []
+                D, wp = librosa.sequence.dtw(input_mfcc[sound_idx], self.patterns_[class_name][0])
+                distances.append(D[len(input_mfcc[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
+                del D, wp
+                for pattern in self.patterns_[class_name][1:]:
+                    D, wp = librosa.sequence.dtw(input_mfcc[sound_idx], pattern)
+                    distances.append(D[len(input_mfcc[sound_idx]) - 1][len(self.patterns_[class_name][0]) - 1])
+                distances.sort()
+                res[sound_idx][class_idx] = sum(map(lambda it: 1.0 / (it * it + 1e-9), distances))
+            res[sound_idx] /= res[sound_idx].sum()
+        return res
+
+    def predict_log_proba(self, X: Union[list, tuple, np.ndarray]) -> np.ndarray:
+        return np.log(np.asarray(self.predict_proba(X), dtype=np.float64) + 1e-9)
+
+    def score(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
+              sample_weight: Union[list, tuple, np.ndarray, None] = None) -> float:
+        y_pred = self.predict(X)
+        return f1_score(y, y_pred, average='macro', sample_weight=sample_weight)
+
+    def fit_predict(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
+                    sample_weight: Union[list, tuple, np.ndarray, None]=None, **kwargs):
+        return self.fit(X, y)
+
+    def check_is_fitted(self):
+        check_is_fitted(self, ['patterns_', 'classes_', 'classes_reverse_', 'threshold_'])
+
+    def update_threshold(self, labels: Union[np.ndarray, List[int], List[str]],
+                         sounds: Union[np.ndarray, List[np.ndarray], None]=None,
+                         mfcc: Union[List[np.ndarray], None]=None):
+        if (sounds is None) and (mfcc is None):
+            raise ValueError('Neither sounds nor mfcc are specified!')
+        if mfcc is None:
+            mfcc_ = self.sounds_to_mfcc(sounds)
+        else:
+            mfcc_ = mfcc
+        self.threshold_ = 0.0
+        self.check_is_fitted()
+        max_probabilities = self.predict_proba(mfcc=mfcc_).max(axis=1)
+        y_true = np.zeros(shape=max_probabilities.shape, dtype=np.int32)
+        for sample_idx in range(len(labels)):
+            if (labels[sample_idx] != -1) and (labels[sample_idx] != '-1'):
+                y_true[sample_idx] = 1
+        if y_true.min() == 1:
+            self.threshold_ = max_probabilities.min()
+        else:
+            best_threshold = 1e-2
+            y_pred = np.asarray(max_probabilities >= best_threshold, dtype=np.int32)
+            best_f1 = f1_score(y_true, y_pred)
+            cur_threshold = best_threshold + 1e-2
+            del y_pred
+            while cur_threshold < 1.0:
+                y_pred = np.asarray(max_probabilities >= cur_threshold, dtype=np.int32)
+                cur_f1 = f1_score(y_true, y_pred)
+                if cur_f1 > best_f1:
+                    best_f1 = cur_f1
+                    best_threshold = cur_threshold
+                cur_threshold += 1e-2
+            self.threshold_ = best_threshold
+
+    def sounds_to_mfcc(self, sounds: Union[np.ndarray, List[np.ndarray]]) -> List[np.ndarray]:
+        list_of_mfcc = []
+        n_window = int(round(self.sampling_frequency * self.window_size))
+        n_shift = int(round(self.sampling_frequency * self.shift_size))
+        n_fft = MobilenetRecognizer.get_n_fft(self.sampling_frequency, self.window_size)
+        if not hasattr(self, 'melfb_'):
+            self.update_triangle_filters()
+        for sound_idx in range(sounds.shape[0] if isinstance(sounds, np.ndarray) else len(sounds)):
+            specgram = librosa.core.stft(y=sounds[sound_idx], n_fft=n_fft, hop_length=n_shift, win_length=n_window,
+                                         window='hamming')
+            specgram = np.asarray(np.absolute(specgram), dtype=np.float64)
+            mel_specgram = np.dot(self.melfb_, specgram)
+            list_of_mfcc.append(librosa.feature.mfcc(S=librosa.power_to_db(mel_specgram), n_mfcc=self.N_CEPS))
+        return list_of_mfcc
+
+    def update_triangle_filters(self):
+        n_fft = MobilenetRecognizer.get_n_fft(self.sampling_frequency, self.window_size)
+        if hasattr(self, 'melfb_'):
+            del self.melfb_
+        self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.N_MELS,
+                                          fmin=350.0, fmax=6000.0)
+
+    @staticmethod
+    def check_params(**kwargs):
+        if 'sampling_frequency' not in kwargs:
+            raise ValueError('`sampling_frequency` is not specified!')
+        if (not isinstance(kwargs['sampling_frequency'], int)) and \
+                (not isinstance(kwargs['sampling_frequency'], np.int32)) and \
+                (not isinstance(kwargs['sampling_frequency'], np.uint32)):
+            raise ValueError('`sampling_frequency` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(3), type(kwargs['sampling_frequency'])))
+        if kwargs['sampling_frequency'] < 1:
+            raise ValueError('`sampling_frequency` is wrong! Expected a positive integer value, '
+                             'but {0} is not positive.'.format(kwargs['sampling_frequency']))
+        if kwargs['sampling_frequency'] < 16000:
+            raise ValueError('`sampling_frequency` is wrong! Minimal admissible value is 16000 Hz.')
+        if 'window_size' not in kwargs:
+            raise ValueError('`window_size` is not specified!')
+        if (not isinstance(kwargs['window_size'], float)) and \
+                (not isinstance(kwargs['window_size'], np.float32)) and \
+                (not isinstance(kwargs['window_size'], np.float64)):
+            raise ValueError('`window_size` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(3.5), type(kwargs['window_size'])))
+        if kwargs['window_size'] <= 0.0:
+            raise ValueError('`window_size` is wrong! Expected a positive floating-point value, '
+                             'but {0} is not positive.'.format(kwargs['window_size']))
+        n_window = int(round(kwargs['sampling_frequency'] * kwargs['window_size']))
+        if n_window < 10:
+            raise ValueError('`window_size` is wrong! {0:.6f} is too small value for `window_size`.'.format(
+                kwargs['window_size']))
+        if 'shift_size' not in kwargs:
+            raise ValueError('`shift_size` is not specified!')
+        if (not isinstance(kwargs['shift_size'], float)) and \
+                (not isinstance(kwargs['shift_size'], np.float32)) and \
+                (not isinstance(kwargs['shift_size'], np.float64)):
+            raise ValueError('`shift_size` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(3.5), type(kwargs['shift_size'])))
+        if kwargs['shift_size'] <= 0.0:
+            raise ValueError('`shift_size` is wrong! Expected a positive floating-point value, '
+                             'but {0} is not positive.'.format(kwargs['shift_size']))
+        n_shift = int(round(kwargs['sampling_frequency'] * kwargs['shift_size']))
+        if n_shift < 5:
+            raise ValueError('`shift_size` is wrong! {0:.6f} is too small value for `shift_size`.'.format(
+                kwargs['shift_size']))
+        if 'verbose' not in kwargs:
+            raise ValueError('`verbose` is not specified!')
+        if (not isinstance(kwargs['verbose'], int)) and (not isinstance(kwargs['verbose'], np.int32)) and \
+                (not isinstance(kwargs['verbose'], np.uint32)) and \
+                (not isinstance(kwargs['verbose'], bool)) and (not isinstance(kwargs['verbose'], np.bool)):
+            raise ValueError('`verbose` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(True), type(kwargs['verbose'])))
+        if 'warm_start' not in kwargs:
+            raise ValueError('`warm_start` is not specified!')
+        if (not isinstance(kwargs['warm_start'], int)) and (not isinstance(kwargs['warm_start'], np.int32)) and \
+                (not isinstance(kwargs['warm_start'], np.uint32)) and \
+                (not isinstance(kwargs['warm_start'], bool)) and (not isinstance(kwargs['warm_start'], np.bool)):
+            raise ValueError('`warm_start` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(True), type(kwargs['warm_start'])))
+        if 'k' not in kwargs:
+            raise ValueError('`k` is not specified!')
+        if (not isinstance(kwargs['k'], int)) and \
+                (not isinstance(kwargs['k'], np.int32)) and \
+                (not isinstance(kwargs['k'], np.uint32)):
+            raise ValueError('`k` is wrong! Expected `{0}`, got `{1}`.'.format(type(3), type(kwargs['k'])))
+        if kwargs['k'] < 1:
+            raise ValueError('`k` is wrong! Expected a positive integer value, '
+                             'but {0} is not positive.'.format(kwargs['k']))
+
+    def get_params(self, deep=True):
+        return {'sampling_frequency': self.sampling_frequency, 'window_size': self.window_size,
+                'shift_size': self.shift_size, 'k': self.k, 'verbose': self.verbose, 'warm_start': self.warm_start}
+
+    def set_params(self, **params):
+        for parameter, value in params.items():
+            self.__setattr__(parameter, value)
+        return self
+
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.set_params(
+            sampling_frequency=self.sampling_frequency, window_size=self.window_size, shift_size=self.shift_size,
+            k=self.k, warm_start=self.warm_start, verbose=self.verbose
+        )
+        try:
+            self.check_is_fitted()
+            is_fitted = True
+        except:
+            is_fitted = False
+        if is_fitted:
+            result.classes_ = copy.copy(self.classes_)
+            result.classes_reverse_ = copy.copy(self.classes_reverse_)
+            result.patterns_ = copy.copy(self.patterns_)
+        return result
+
+    def __deepcopy__(self, memodict={}):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.set_params(
+            sampling_frequency=self.sampling_frequency, window_size=self.window_size, shift_size=self.shift_size,
+            k=self.k, warm_start=self.warm_start, verbose=self.verbose
+        )
+        try:
+            self.check_is_fitted()
+            is_fitted = True
+        except:
+            is_fitted = False
+        if is_fitted:
+            result.classes_ = copy.deepcopy(self.classes_)
+            result.classes_reverse_ = copy.deepcopy(self.classes_reverse_)
+            result.patterns_ = copy.deepcopy(self.patterns_)
+        return result
+
+    def __getstate__(self):
+        return self.dump_all()
+
+    def __setstate__(self, state: dict):
+        self.load_all(state)
+
+    def dump_all(self):
+        try:
+            self.check_is_fitted()
+            is_fitted = True
+        except:
+            is_fitted = False
+        params = self.get_params(True)
+        if is_fitted:
+            params['classes_'] = copy.deepcopy(self.classes_)
+            params['classes_reverse_'] = copy.deepcopy(self.classes_reverse_)
+            params['threshold_'] = self.threshold_
+            params['patterns_'] = copy.deepcopy(self.patterns_)
+        return params
+
+    def load_all(self, new_params: dict):
+        if not isinstance(new_params, dict):
+            raise ValueError('`new_params` is wrong! Expected `{0}`, got `{1}`.'.format(type({0: 1}), type(new_params)))
+        self.check_params(**new_params)
+        is_fitted = ('classes_' in new_params) and ('classes_reverse_' in new_params) and \
+                    ('threshold_' in new_params) and ('patterns_' in new_params)
+        if is_fitted:
+            self.set_params(**new_params)
+            self.classes_reverse_ = copy.deepcopy(new_params['classes_reverse_'])
+            self.classes_ = copy.deepcopy(new_params['classes_'])
+            self.threshold_ = new_params['threshold_']
+            self.patterns_ = new_params['patterns_']
+        else:
+            self.set_params(**new_params)
+            if hasattr(self, 'patterns_'):
+                del self.patterns_
+            if hasattr(self, 'classes_reverse_'):
+                del self.classes_reverse_
+            if hasattr(self, 'classes_'):
+                del self.classes_
+            if hasattr(self, 'threshold_'):
+                del self.threshold_
+        return self
