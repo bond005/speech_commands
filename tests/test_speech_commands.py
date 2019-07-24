@@ -498,7 +498,7 @@ class TestDTWRecognizer(unittest.TestCase):
         true_err_msg = re.escape('`shift_size` is wrong! {0:.6f} is too small value for `shift_size`.'.format(1e-5))
         with self.assertRaisesRegex(ValueError, true_err_msg):
             DTWRecognizer.check_params(
-                ssampling_frequency=16000, window_size=0.025, shift_size=1e-5, k=7, verbose=False, warm_start=False
+                sampling_frequency=16000, window_size=0.025, shift_size=1e-5, k=7, verbose=False, warm_start=False
             )
 
     def test_check_params_negative13(self):
@@ -530,13 +530,6 @@ class TestDTWRecognizer(unittest.TestCase):
             )
 
     def test_check_params_negative17(self):
-        true_err_msg = re.escape('`window_size` is too small for specified sampling frequency!')
-        with self.assertRaisesRegex(ValueError, true_err_msg):
-            DTWRecognizer.check_params(
-                sampling_frequency=16000, window_size=0.00625, shift_size=0.01, k=7, verbose=False, warm_start=False
-            )
-
-    def test_check_params_negative18(self):
         true_err_msg = re.escape('`warm_start` is not specified!')
         with self.assertRaisesRegex(ValueError, true_err_msg):
             DTWRecognizer.check_params(
