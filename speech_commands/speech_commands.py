@@ -67,8 +67,6 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.update_random_seed()
         if self.warm_start:
             self.check_is_fitted()
-            if hasattr(self, 'recognizer_'):
-                del self.recognizer_
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
@@ -416,7 +414,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if len(normalized_spectrograms.shape) != 3:
             raise ValueError('Normalized spectrograms are wrong! Expected a 3-D array, but got a {0}-D one.'.format(
                 len(normalized_spectrograms.shape)))
-        return SoundRecognizer.COLORMAP(normalized_spectrograms)[:, :, 0:3]
+        return SoundRecognizer.COLORMAP(normalized_spectrograms)[:, :, :, 0:3]
 
     @staticmethod
     def check_params(**kwargs):
