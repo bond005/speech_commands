@@ -709,7 +709,7 @@ class TrainsetGenerator(keras.utils.Sequence):
                                 )
                             )
                         ),
-                        axis=1
+                        axis=0
                     )
                 else:
                     random_noise = np.random.uniform(
