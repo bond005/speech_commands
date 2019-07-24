@@ -111,11 +111,29 @@ def main():
             recognizer = pickle.load(fp)
     else:
         recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
-                                         batch_size=64, max_epochs=100, patience=3, verbose=True, warm_start=False,
+                                         batch_size=64, max_epochs=100, patience=7, verbose=True, warm_start=False,
                                          random_seed=42, cache_dir=cache_dir_name)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation)
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
+    print('')
+    print('Report for data for training:')
+    y_pred = recognizer.predict(data_for_training[0])
+    print(classification_report(
+        list(map(lambda it1: '__UNKNOWN__' if it1 == -1 else it1, data_for_training[1])),
+        list(map(lambda it2: '__UNKNOWN__' if it2 == -1 else it2, y_pred))
+    ))
+    print('')
+    print('')
+    print('Report for validation data:')
+    y_pred = recognizer.predict(data_for_validation[0])
+    print(classification_report(
+        list(map(lambda it1: '__UNKNOWN__' if it1 == -1 else it1, data_for_validation[1])),
+        list(map(lambda it2: '__UNKNOWN__' if it2 == -1 else it2, y_pred))
+    ))
+    print('')
+    print('')
+    print('Report for data for testing:')
     y_pred = recognizer.predict(data_for_testing[0])
     print(classification_report(
         list(map(lambda it1: '__UNKNOWN__' if it1 == -1 else it1, data_for_testing[1])),
