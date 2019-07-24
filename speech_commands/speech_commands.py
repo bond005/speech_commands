@@ -196,6 +196,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                                      window_size=self.window_size, shift_size=self.shift_size,
                                      sampling_frequency=self.sampling_frequency)
                 ).max(axis=1).min()
+        if self.verbose:
+            print('Best threshold for probability is {0:.2f}.'.format(self.threshold_))
         return self
 
     def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
