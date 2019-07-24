@@ -672,7 +672,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         if (self.cache_dir_name is None) or \
                 (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
             normalized_spectrograms = np.empty(
-                (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1]),
+                (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
                 dtype=np.float32
             )
             targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
@@ -767,7 +767,7 @@ class DatasetGenerator(keras.utils.Sequence):
         batch_end = min((idx + 1) * self.batch_size, n_samples)
         batch_size = batch_end - batch_start
         normalized_spectrograms = np.empty(
-            (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1],),
+            (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2,),
             dtype=np.float32
         )
         for sample_idx in range(batch_start, batch_end):
