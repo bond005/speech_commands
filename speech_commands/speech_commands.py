@@ -637,9 +637,9 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
         if use_augmentation:
             self.image_augmenator = keras.preprocessing.image.ImageDataGenerator(
-                width_shift_range=0.2,
-                height_shift_range=0.2,
-                zoom_range=0.2,
+                width_shift_range=0.25,
+                height_shift_range=0.15,
+                zoom_range=0.25,
                 dtype=np.float32
             )
         else:
@@ -723,7 +723,7 @@ class TrainsetGenerator(keras.utils.Sequence):
                 spectrograms_as_images[sample_idx] = self.image_augmenator.random_transform(
                     spectrograms_as_images[sample_idx]
                 )
-                spectrograms_as_images[sample_idx] = 0.95 * spectrograms_as_images[sample_idx] + 0.05 * random_noise
+                spectrograms_as_images[sample_idx] = 0.98 * spectrograms_as_images[sample_idx] + 0.02 * random_noise
         del normalized_spectrograms
         if self.sample_weight is None:
             return spectrograms_as_images, targets
