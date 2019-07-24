@@ -687,7 +687,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         if self.image_augmenator is not None:
             for sample_idx in range(spectrograms_as_images.shape[0]):
                 spectrogram_size = sum(map(
-                    lambda row_idx: 1 if normalized_spectrograms[sample_idx][row_idx] > 0.0 else 0,
+                    lambda row_idx: 1 if normalized_spectrograms[sample_idx][row_idx].sum() > 0.0 else 0,
                     range(normalized_spectrograms.shape[1])
                 ))
                 if spectrogram_size < spectrograms_as_images.shape[1]:
