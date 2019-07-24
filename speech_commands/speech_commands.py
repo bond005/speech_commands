@@ -256,7 +256,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         n_fft = self.get_n_fft(self.sampling_frequency, self.window_size)
         if hasattr(self, 'melfb_'):
             del self.melfb_
-        self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1] // 2)
+        self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1] // 2,
+                                          fmin=350.0, fmax=6000.0)
 
     def check_is_fitted(self):
         check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'threshold_'])
@@ -472,8 +473,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         if kwargs['sampling_frequency'] < 1:
             raise ValueError('`sampling_frequency` is wrong! Expected a positive integer value, '
                              'but {0} is not positive.'.format(kwargs['sampling_frequency']))
-        if kwargs['sampling_frequency'] < 8000:
-            raise ValueError('`sampling_frequency` is wrong! Minimal admissible value is 8000 Hz.')
+        if kwargs['sampling_frequency'] < 16000:
+            raise ValueError('`sampling_frequency` is wrong! Minimal admissible value is 16000 Hz.')
         if 'window_size' not in kwargs:
             raise ValueError('`window_size` is not specified!')
         if (not isinstance(kwargs['window_size'], float)) and \

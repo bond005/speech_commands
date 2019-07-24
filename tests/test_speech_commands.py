@@ -83,7 +83,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
             )
 
     def test_check_params_negative04(self):
-        true_err_msg = re.escape('`sampling_frequency` is wrong! Minimal admissible value is 8000 Hz.')
+        true_err_msg = re.escape('`sampling_frequency` is wrong! Minimal admissible value is 16000 Hz.')
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=6000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
@@ -257,7 +257,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         true_err_msg = re.escape('`window_size` is too small for specified sampling frequency!')
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
-                sampling_frequency=8000, window_size=0.0125, shift_size=0.01, batch_size=32, max_epochs=100,
+                sampling_frequency=16000, window_size=0.00625, shift_size=0.01, batch_size=32, max_epochs=100,
                 patience=5, verbose=False, warm_start=False, random_seed=None, cache_dir=None
             )
 
