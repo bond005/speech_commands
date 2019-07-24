@@ -115,6 +115,24 @@ def main():
                        validation_data=(sounds_for_validation, labels_for_validation))
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
+    print('')
+    print('Report for data for training:')
+    y_pred = recognizer.predict(sounds_for_training)
+    print(classification_report(
+        list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, labels_for_training)),
+        list(map(lambda it2: 'UNKNOWN' if it2 == -1 else it2, y_pred))
+    ))
+    print('')
+    print('')
+    print('Report for validation data:')
+    y_pred = recognizer.predict(sounds_for_validation)
+    print(classification_report(
+        list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, labels_for_validation)),
+        list(map(lambda it2: 'UNKNOWN' if it2 == -1 else it2, y_pred))
+    ))
+    print('')
+    print('')
+    print('Report for data for testing:')
     y_pred = recognizer.predict(sounds_for_testing)
     print(classification_report(
         list(map(lambda it1: 'UNKNOWN' if it1 == -1 else it1, labels_for_testing)),
