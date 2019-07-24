@@ -684,14 +684,50 @@ class TrainsetGenerator(keras.utils.Sequence):
             with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
                 normalized_spectrograms, targets = pickle.load(fp)
         spectrograms_as_images = SoundRecognizer.spectrograms_to_images(normalized_spectrograms)
-        del normalized_spectrograms
         if self.image_augmenator is not None:
             for sample_idx in range(spectrograms_as_images.shape[0]):
+                spectrogram_size = sum(map(
+                    lambda row_idx: 1 if normalized_spectrograms[sample_idx][row_idx] > 0.0 else 0,
+                    range(normalized_spectrograms.shape[1])
+                ))
+                if spectrogram_size < spectrograms_as_images.shape[1]:
+                    random_noise = np.concatenate(
+                        (
+                            np.random.uniform(
+                                0.0, 1.0,
+                                (
+                                    spectrograms_as_images.shape[0],
+                                    spectrogram_size,
+                                    spectrograms_as_images.shape[2],
+                                    spectrograms_as_images.shape[3]
+                                )
+                            ),
+                            np.zeros(
+                                (
+                                    spectrograms_as_images.shape[0],
+                                    spectrograms_as_images.shape[1] - spectrogram_size,
+                                    spectrograms_as_images.shape[2],
+                                    spectrograms_as_images.shape[3]
+                                )
+                            )
+                        ),
+                        axis=1
+                    )
+                else:
+                    random_noise = np.random.uniform(
+                        0.0, 1.0,
+                        (
+                            spectrograms_as_images.shape[0],
+                            spectrogram_size,
+                            spectrograms_as_images.shape[2],
+                            spectrograms_as_images.shape[3]
+                        )
+                    )
                 spectrograms_as_images[sample_idx] = self.image_augmenator.random_transform(
                     spectrograms_as_images[sample_idx]
                 )
-                random_noise = np.random.uniform(0.0, 1.0, spectrograms_as_images[sample_idx].shape)
                 spectrograms_as_images[sample_idx] = 0.95 * spectrograms_as_images[sample_idx] + 0.05 * random_noise
+        del normalized_spectrograms
         if self.sample_weight is None:
             return spectrograms_as_images, targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
