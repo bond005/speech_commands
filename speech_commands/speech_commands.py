@@ -939,6 +939,8 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
                     best_threshold = cur_threshold
                 cur_threshold += 1e-2
             self.threshold_ = best_threshold
+        if self.verbose:
+            print('Best threshold of probability is {0:.2f}.'.format(self.threshold_))
 
     def sounds_to_mfcc(self, sounds: Union[np.ndarray, List[np.ndarray]]) -> List[np.ndarray]:
         list_of_mfcc = []
