@@ -12,10 +12,10 @@ from sklearn.metrics import classification_report
 
 
 try:
-    from speech_commands.speech_commands import MobilenetRecognizer
+    from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
 except:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from speech_commands.speech_commands import MobilenetRecognizer
+    from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
 
 
 def read_data_for_training(annotation_file_name: str,
@@ -81,6 +81,8 @@ def main():
                         help='Path to the CSV file with data for final evaluation.')
     parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False,
                         help='Path to the directory with cached data.')
+    parser.add_argument('-k', '--kind', dest='kind_of_model', type=str, required=False, default='ann',
+                        help='Kind of used model (DTW or ANN).')
     cmd_args = parser.parse_args()
 
     model_name = os.path.normpath(cmd_args.model_name)
@@ -88,6 +90,9 @@ def main():
     validation_data_name = os.path.normpath(cmd_args.val_file_name)
     test_data_name = os.path.normpath(cmd_args.test_file_name)
     cache_dir_name = None if cmd_args.cache_dir_name is None else os.path.normpath(cmd_args.cache_dir_name)
+    model_kind = cmd_args.kind_of_model.strip().lower()
+    if model_kind not in {'ann', 'dtw'}:
+        raise ValueError('{0} is unknown kind of model!'.format(cmd_args.kind_of_model))
 
     sounds_for_training, labels_for_training, sampling_frequency = read_data_for_training(
         train_data_name, os.path.dirname(train_data_name)
@@ -108,11 +113,17 @@ def main():
         with open(model_name, 'rb') as fp:
             recognizer = pickle.load(fp)
     else:
-        recognizer = MobilenetRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
-                                         batch_size=8, max_epochs=100, patience=5, verbose=True, warm_start=False,
-                                         random_seed=42, cache_dir=cache_dir_name)
-        recognizer.fit(sounds_for_training, labels_for_training,
-                       validation_data=(sounds_for_validation, labels_for_validation))
+        if model_kind == 'ann':
+            recognizer = MobilenetRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
+                                             batch_size=8, max_epochs=100, patience=5, verbose=True, warm_start=False,
+                                             random_seed=42, cache_dir=cache_dir_name)
+            recognizer.fit(sounds_for_training, labels_for_training,
+                           validation_data=(sounds_for_validation, labels_for_validation))
+        else:
+            recognizer = DTWRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
+                                       verbose=True, warm_start=False)
+            recognizer.fit(sounds_for_training, labels_for_training)
+            recognizer.update_threshold(sounds=sounds_for_validation, labels=labels_for_validation)
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
     print('')

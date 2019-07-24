@@ -13,10 +13,10 @@ from sklearn.metrics import f1_score
 
 
 try:
-    from speech_commands.speech_commands import MobilenetRecognizer
+    from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
 except:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from speech_commands.speech_commands import MobilenetRecognizer
+    from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
 
 
 class TestMobilenetRecognizer(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
                 os.remove(self.temp_file_name)
 
     def test_creation(self):
-        self.cls = MobilenetRecognizer()
+        self.cls = MobilenetRecognizer(cache_dir='abc')
         self.assertIsInstance(self.cls, MobilenetRecognizer)
         self.assertTrue(hasattr(self.cls, 'batch_size'))
         self.assertTrue(hasattr(self.cls, 'max_epochs'))
@@ -40,6 +40,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertTrue(hasattr(self.cls, 'window_size'))
         self.assertTrue(hasattr(self.cls, 'shift_size'))
         self.assertTrue(hasattr(self.cls, 'sampling_frequency'))
+        self.assertTrue(hasattr(self.cls, 'cache_dir'))
         self.assertIsInstance(self.cls.batch_size, int)
         self.assertIsInstance(self.cls.max_epochs, int)
         self.assertIsInstance(self.cls.patience, int)
@@ -48,6 +49,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertIsInstance(self.cls.sampling_frequency, int)
         self.assertIsInstance(self.cls.window_size, float)
         self.assertIsInstance(self.cls.shift_size, float)
+        self.assertIsInstance(self.cls.cache_dir, str)
         self.assertIsNone(self.cls.random_seed)
 
     def test_check_params_positive(self):
@@ -277,6 +279,14 @@ class TestMobilenetRecognizer(unittest.TestCase):
                 warm_start=False, verbose=True, random_seed=None, cache_dir=3.5
             )
 
+    def test_check_params_negative28(self):
+        true_err_msg = re.escape('`warm_start` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            MobilenetRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
+                verbose=False, random_seed=None, cache_dir=None
+            )
+
     def test_check_X_positive01(self):
         MobilenetRecognizer.check_X(
             [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_train'
@@ -369,6 +379,168 @@ class TestMobilenetRecognizer(unittest.TestCase):
             _, _ = MobilenetRecognizer.check_Xy(
                 [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_train',
                 ['sound' for _ in range(5)] + ['silence' for _ in range(3)] + [-2 for _ in range(2)], 'y_train'
+            )
+
+
+class TestDTWRecognizer(unittest.TestCase):
+    def tearDown(self):
+        if hasattr(self, 'cls'):
+            del self.cls
+        if hasattr(self, 'another_cls'):
+            del self.another_cls
+        if hasattr(self, 'temp_file_name'):
+            if os.path.isfile(self.temp_file_name):
+                os.remove(self.temp_file_name)
+
+    def test_creation(self):
+        self.cls = DTWRecognizer()
+        self.assertIsInstance(self.cls, DTWRecognizer)
+        self.assertTrue(hasattr(self.cls, 'verbose'))
+        self.assertTrue(hasattr(self.cls, 'warm_start'))
+        self.assertTrue(hasattr(self.cls, 'window_size'))
+        self.assertTrue(hasattr(self.cls, 'shift_size'))
+        self.assertTrue(hasattr(self.cls, 'sampling_frequency'))
+        self.assertTrue(hasattr(self.cls, 'k'))
+        self.assertIsInstance(self.cls.k, int)
+        self.assertIsInstance(self.cls.verbose, bool)
+        self.assertIsInstance(self.cls.warm_start, bool)
+        self.assertIsInstance(self.cls.sampling_frequency, int)
+        self.assertIsInstance(self.cls.window_size, float)
+        self.assertIsInstance(self.cls.shift_size, float)
+
+    def test_check_params_positive(self):
+        DTWRecognizer.check_params(
+            sampling_frequency=16000, window_size=0.025, shift_size=0.01, k=7, verbose=False, warm_start=False
+        )
+        self.assertTrue(True)
+
+    def test_check_params_negative01(self):
+        true_err_msg = re.escape('`sampling_frequency` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                window_size=0.025, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative02(self):
+        true_err_msg = re.escape('`sampling_frequency` is wrong! Expected `{0}`, got `{1}`.'.format(type(3), type(3.5)))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=3.5, window_size=0.025, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative03(self):
+        true_err_msg = re.escape('`sampling_frequency` is wrong! Expected a positive integer value, but -3 is not '
+                                 'positive.')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=-3, window_size=0.025, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative04(self):
+        true_err_msg = re.escape('`sampling_frequency` is wrong! Minimal admissible value is 16000 Hz.')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=6000, window_size=0.025, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative05(self):
+        true_err_msg = re.escape('`window_size` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative06(self):
+        true_err_msg = re.escape('`window_size` is wrong! Expected a positive floating-point value, but {0} is not '
+                                 'positive.'.format(-2.5))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=-2.5, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative07(self):
+        true_err_msg = re.escape('`window_size` is wrong! Expected `{0}`, got `{1}`.'.format(type(3.5), type(3)))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=2, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative08(self):
+        true_err_msg = re.escape('`window_size` is wrong! {0:.6f} is too small value for `window_size`.'.format(1e-4))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=1e-4, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative09(self):
+        true_err_msg = re.escape('`shift_size` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative10(self):
+        true_err_msg = re.escape('`shift_size` is wrong! Expected a positive floating-point value, '
+                                 'but {0} is not positive.'.format(-0.01))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=-0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative11(self):
+        true_err_msg = re.escape('`shift_size` is wrong! Expected `{0}`, got `{1}`.'.format(type(3.5), type(3)))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=1, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative12(self):
+        true_err_msg = re.escape('`shift_size` is wrong! {0:.6f} is too small value for `shift_size`.'.format(1e-5))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                ssampling_frequency=16000, window_size=0.025, shift_size=1e-5, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative13(self):
+        true_err_msg = re.escape('`k` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative14(self):
+        true_err_msg = re.escape('`k` is wrong! Expected `{0}`, got `{1}`.'.format(type(3), type('3')))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, k='3', verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative15(self):
+        true_err_msg = re.escape('`k` is wrong! Expected a positive integer value, but -3 is not positive.')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, k=-3, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative16(self):
+        true_err_msg = re.escape('`verbose` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, k=7, warm_start=False
+            )
+
+    def test_check_params_negative17(self):
+        true_err_msg = re.escape('`window_size` is too small for specified sampling frequency!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.00625, shift_size=0.01, k=7, verbose=False, warm_start=False
+            )
+
+    def test_check_params_negative18(self):
+        true_err_msg = re.escape('`warm_start` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            DTWRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, k=7, verbose=False
             )
 
 
