@@ -416,25 +416,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if len(normalized_spectrograms.shape) != 3:
             raise ValueError('Normalized spectrograms are wrong! Expected a 3-D array, but got a {0}-D one.'.format(
                 len(normalized_spectrograms.shape)))
-        images = np.empty(
-            shape=(
-                normalized_spectrograms.shape[0], normalized_spectrograms.shape[1], normalized_spectrograms.shape[2], 3
-            ),
-            dtype=np.float32
-        )
-        for sample_idx in range(normalized_spectrograms.shape[0]):
-            for row_idx in range(normalized_spectrograms.shape[1]):
-                for col_idx in range(normalized_spectrograms.shape[2]):
-                    cur_value = normalized_spectrograms[sample_idx][row_idx][col_idx]
-                    if cur_value < 0.0:
-                        cur_value = 0.0
-                    elif cur_value > 1.0:
-                        cur_value = 1.0
-                    r, g, b, _ = SoundRecognizer.COLORMAP(cur_value)
-                    images[sample_idx][row_idx][col_idx][0] = r
-                    images[sample_idx][row_idx][col_idx][1] = g
-                    images[sample_idx][row_idx][col_idx][2] = b
-        return images
+        return SoundRecognizer.COLORMAP(normalized_spectrograms)[:, :, 0:3]
 
     @staticmethod
     def check_params(**kwargs):
