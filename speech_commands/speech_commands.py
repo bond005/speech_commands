@@ -16,7 +16,7 @@ from sklearn.metrics import f1_score
 from sklearn.utils.validation import check_is_fitted
 
 
-class SoundRecognizer(ClassifierMixin, BaseEstimator):
+class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     COLORMAP = cm.get_cmap('jet')
     IMAGESIZE = (224, 224)
 
@@ -67,6 +67,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         self.update_random_seed()
         if self.warm_start:
             self.check_is_fitted()
+            self.classes_ = classes_dict
+            self.classes_reverse_ = classes_dict_reverse
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
             output_layer = keras.layers.Dense(
                 units=len(self.classes_), activation='softmax',
@@ -254,7 +256,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         n_fft = self.get_n_fft(self.sampling_frequency, self.window_size)
         if hasattr(self, 'melfb_'):
             del self.melfb_
-        self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1])
+        self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.IMAGESIZE[1] // 2)
 
     def check_is_fitted(self):
         check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'threshold_'])
@@ -375,7 +377,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                                 melfb: np.ndarray) -> np.ndarray:
         n_window = int(round(sampling_frequency * window_size))
         n_shift = int(round(sampling_frequency * shift_size))
-        n_fft = SoundRecognizer.get_n_fft(sampling_frequency, window_size)
+        n_fft = MobilenetRecognizer.get_n_fft(sampling_frequency, window_size)
         specgram = librosa.core.stft(y=sound, n_fft=n_fft, hop_length=n_shift, win_length=n_window, window='hamming')
         specgram = np.asarray(np.absolute(specgram), dtype=np.float64)
         return np.dot(melfb, specgram).transpose()
@@ -396,18 +398,19 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
                         normalized[row_idx][col_idx] = 0.0
                     elif normalized[row_idx][col_idx] > 1.0:
                         normalized[row_idx][col_idx] = 1.0
-            if normalized.shape[0] < SoundRecognizer.IMAGESIZE[0]:
+            if normalized.shape[0] < MobilenetRecognizer.IMAGESIZE[0]:
                 normalized = np.vstack(
                     (
                         normalized,
-                        np.zeros((SoundRecognizer.IMAGESIZE[0] - normalized.shape[0], normalized.shape[1]),
+                        np.zeros((MobilenetRecognizer.IMAGESIZE[0] - normalized.shape[0], normalized.shape[1]),
                                  dtype=normalized.dtype)
                     )
                 )
-            elif normalized.shape[0] > SoundRecognizer.IMAGESIZE[0]:
-                normalized = normalized[0:SoundRecognizer.IMAGESIZE[0]]
+            elif normalized.shape[0] > MobilenetRecognizer.IMAGESIZE[0]:
+                normalized = normalized[0:MobilenetRecognizer.IMAGESIZE[0]]
         else:
-            normalized = np.zeros(shape=(SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1]), dtype=np.float32)
+            normalized = np.zeros(shape=(MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
+                                  dtype=np.float32)
         return np.asarray(normalized, dtype=np.float32)
 
     @staticmethod
@@ -415,7 +418,13 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
         if len(normalized_spectrograms.shape) != 3:
             raise ValueError('Normalized spectrograms are wrong! Expected a 3-D array, but got a {0}-D one.'.format(
                 len(normalized_spectrograms.shape)))
-        return SoundRecognizer.COLORMAP(normalized_spectrograms)[:, :, :, 0:3]
+        if (normalized_spectrograms.shape[1] != MobilenetRecognizer.IMAGESIZE[0]) or \
+                ((normalized_spectrograms.shape[2] != (MobilenetRecognizer.IMAGESIZE[1] // 2))):
+            raise ValueError('Sizes of normalized spectrogram are wrong! Expected ({0}, {1}), got ({2}, {3}).'.format(
+                MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2,
+                normalized_spectrograms.shape[1], normalized_spectrograms.shape[2]
+            ))
+        return MobilenetRecognizer.COLORMAP(np.repeat(normalized_spectrograms, 2, axis=2))[:, :, :, 0:3]
 
     @staticmethod
     def check_params(**kwargs):
@@ -520,8 +529,8 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
             if (not hasattr(kwargs['cache_dir'], 'split')) or (not hasattr(kwargs['cache_dir'], 'strip')):
                 raise ValueError('`cache_dir` is wrong! Expected `{0}`, got `{1}`.'.format(
                     type('3s'), type(kwargs['cache_dir'])))
-        n_fft = SoundRecognizer.get_n_fft(kwargs['sampling_frequency'], kwargs['window_size'])
-        if SoundRecognizer.IMAGESIZE[1] >= (n_fft // 2):
+        n_fft = MobilenetRecognizer.get_n_fft(kwargs['sampling_frequency'], kwargs['window_size'])
+        if (MobilenetRecognizer.IMAGESIZE[1] // 2) >= (n_fft // 3):
             raise ValueError('`window_size` is too small for specified sampling frequency!')
 
     @staticmethod
@@ -544,7 +553,7 @@ class SoundRecognizer(ClassifierMixin, BaseEstimator):
     @staticmethod
     def check_Xy(X: Union[np.ndarray, List[np.ndarray]], X_name: str,
                  y: Union[np.ndarray, List[int], List[str]], y_name: str) -> Tuple[dict, list]:
-        SoundRecognizer.check_X(X, X_name)
+        MobilenetRecognizer.check_X(X, X_name)
         n = X.shape[0] if isinstance(X, np.ndarray) else len(X)
         if (not isinstance(y, list)) and (not isinstance(y, tuple)) and (not isinstance(y, np.ndarray)):
             raise ValueError('{0} is wrong type for `{1}`!'.format(type(y), y_name))
@@ -663,17 +672,17 @@ class TrainsetGenerator(keras.utils.Sequence):
         if (self.cache_dir_name is None) or \
                 (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
             normalized_spectrograms = np.empty(
-                (batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1]),
+                (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1]),
                 dtype=np.float32
             )
             targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
             for sample_idx in range(batch_start, batch_end):
-                spectrogram = SoundRecognizer.sound_to_melspectrogram(
+                spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
                     sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency,
                     melfb=self.melfb,
                     window_size=self.window_size, shift_size=self.shift_size
                 )
-                normalized_spectrograms[sample_idx - batch_start] = SoundRecognizer.normalize_melspectrogram(
+                normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
                     spectrogram=spectrogram
                 )
                 targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
@@ -683,7 +692,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         else:
             with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
                 normalized_spectrograms, targets = pickle.load(fp)
-        spectrograms_as_images = SoundRecognizer.spectrograms_to_images(normalized_spectrograms)
+        spectrograms_as_images = MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
         if self.image_augmenator is not None:
             for sample_idx in range(spectrograms_as_images.shape[0]):
                 spectrogram_size = sum(map(
@@ -757,16 +766,20 @@ class DatasetGenerator(keras.utils.Sequence):
         batch_start = idx * self.batch_size
         batch_end = min((idx + 1) * self.batch_size, n_samples)
         batch_size = batch_end - batch_start
-        normalized_spectrograms = np.empty((batch_size, SoundRecognizer.IMAGESIZE[0], SoundRecognizer.IMAGESIZE[1],),
-                                           dtype=np.float32)
+        normalized_spectrograms = np.empty(
+            (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1],),
+            dtype=np.float32
+        )
         for sample_idx in range(batch_start, batch_end):
-            spectrogram = SoundRecognizer.sound_to_melspectrogram(
+            spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
                 sound=self.X[sample_idx if self.indices is None else self.indices[sample_idx]],
                 sampling_frequency=self.sampling_frequency, melfb=self.melfb,
                 window_size=self.window_size, shift_size=self.shift_size
             )
-            normalized_spectrograms[sample_idx - batch_start] = SoundRecognizer.normalize_melspectrogram(spectrogram)
-        return SoundRecognizer.spectrograms_to_images(normalized_spectrograms)
+            normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
+                spectrogram
+            )
+        return MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
 
     def get_number_of_samples(self):
         if self.indices is None:

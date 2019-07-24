@@ -11,10 +11,10 @@ from sklearn.metrics import classification_report
 
 
 try:
-    from speech_commands.speech_commands import SoundRecognizer
+    from speech_commands.speech_commands import MobilenetRecognizer
 except:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from speech_commands.speech_commands import SoundRecognizer
+    from speech_commands.speech_commands import MobilenetRecognizer
 
 
 def read_data(dir_name: str) -> Tuple[Tuple[List[np.ndarray], List[int]], Tuple[List[np.ndarray], List[int]],
@@ -110,9 +110,9 @@ def main():
         with open(model_name, 'rb') as fp:
             recognizer = pickle.load(fp)
     else:
-        recognizer = SoundRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
-                                     batch_size=64, max_epochs=100, patience=3, verbose=True, warm_start=False,
-                                     random_seed=42, cache_dir=cache_dir_name)
+        recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
+                                         batch_size=64, max_epochs=100, patience=3, verbose=True, warm_start=False,
+                                         random_seed=42, cache_dir=cache_dir_name)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation)
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
