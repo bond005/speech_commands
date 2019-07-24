@@ -121,7 +121,7 @@ def main():
                            validation_data=(sounds_for_validation, labels_for_validation))
         else:
             recognizer = DTWRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
-                                       verbose=True, warm_start=False)
+                                       verbose=True, warm_start=False, k=7)
             recognizer.fit(sounds_for_training, labels_for_training)
             recognizer.update_threshold(sounds=sounds_for_validation, labels=labels_for_validation)
         with open(model_name, 'wb') as fp:

@@ -90,7 +90,7 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
                 if not isinstance(kwargs['mfcc'][sound_idx], np.ndarray):
                     raise ValueError('Item {0} of the MFCC list is wrong! Expected a `{1}`, but got a `{2}`!'.format(
                         sound_idx, type(np.array([1, 2])), type(kwargs['mfcc'][sound_idx])))
-                if kwargs['mfcc'][sound_idx].shape != 2:
+                if len(kwargs['mfcc'][sound_idx].shape) != 2:
                     raise ValueError('Item {0} of the MFCC list is wrong! Expected a 2-D array, but got a '
                                      '{1}-D one!`'.format(sound_idx, len(kwargs['mfcc'][sound_idx].shape)))
                 if kwargs['mfcc'][sound_idx].shape[0] != self.N_CEPS:
