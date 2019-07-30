@@ -131,14 +131,14 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 neural_network = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
             neural_network = keras.layers.GlobalAveragePooling2D(name='PoolingLayer')(neural_network)
             if len(self.hidden_layers) > 0:
-                hidden_layer = keras.layers.Dropout(name='Dropout1', dropout=0.3, seed=self.random_seed)(neural_network)
+                hidden_layer = keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network)
                 hidden_layer = keras.layers.Dense(
                     units=self.hidden_layers[0], activation='relu',
                     kernel_initializer=keras.initializers.he_normal(seed=self.random_seed),
                     name='HiddenLayer1'
                 )(hidden_layer)
                 for layer_index in range(1, len(hidden_layer)):
-                    hidden_layer = keras.layers.Dropout(name='Dropout{0}'.format(layer_index + 1), dropout=0.3,
+                    hidden_layer = keras.layers.Dropout(name='Dropout{0}'.format(layer_index + 1), rate=0.3,
                                                         seed=self.random_seed)(hidden_layer)
                     hidden_layer = keras.layers.Dense(
                         units=self.hidden_layers[layer_index], activation='relu',
@@ -148,13 +148,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 output_layer = keras.layers.Dense(
                     units=len(self.classes_), activation='softmax',
                     kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
-                )(keras.layers.Dropout(name='Dropout{0}'.format(len(self.hidden_layers) + 1), dropout=0.3,
+                )(keras.layers.Dropout(name='Dropout{0}'.format(len(self.hidden_layers) + 1), rate=0.3,
                                        seed=self.random_seed)(hidden_layer))
             else:
                 output_layer = keras.layers.Dense(
                     units=len(self.classes_), activation='softmax',
                     kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
-                )(keras.layers.Dropout(name='Dropout1', dropout=0.3, seed=self.random_seed)(neural_network))
+                )(keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
