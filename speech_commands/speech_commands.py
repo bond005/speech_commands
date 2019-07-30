@@ -91,7 +91,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             if len(self.hidden_layers) > 0:
                 hidden_layer = self.recognizer_.get_layer('Dropout1')(neural_network)
                 hidden_layer = self.recognizer_.get_layer(name='HiddenLayer1')(hidden_layer)
-                for layer_index in range(1, len(hidden_layer)):
+                for layer_index in range(1, len(self.hidden_layers)):
                     hidden_layer = self.recognizer_.get_layer('Dropout{0}')(hidden_layer)
                     hidden_layer = self.recognizer_.get_layer(
                         name='HiddenLayer{0}'.format(layer_index + 1)
@@ -137,7 +137,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                     kernel_initializer=keras.initializers.he_normal(seed=self.random_seed),
                     name='HiddenLayer1'
                 )(hidden_layer)
-                for layer_index in range(1, len(hidden_layer)):
+                for layer_index in range(1, len(self.hidden_layers)):
                     hidden_layer = keras.layers.Dropout(name='Dropout{0}'.format(layer_index + 1), rate=0.3,
                                                         seed=self.random_seed)(hidden_layer)
                     hidden_layer = keras.layers.Dense(
