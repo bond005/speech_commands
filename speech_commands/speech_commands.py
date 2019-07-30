@@ -41,7 +41,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed, cache_dir=self.cache_dir)
+                          random_seed=self.random_seed, cache_dir=self.cache_dir, layer_level=self.layer_level,
+                          hidden_layers=self.hidden_layers)
         classes_dict, classes_dict_reverse = self.check_Xy(X, 'X', y, 'y')
         n_train = len(y)
         if self.verbose:
@@ -280,7 +281,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed, cache_dir=self.cache_dir)
+                          random_seed=self.random_seed, cache_dir=self.cache_dir, layer_level=self.layer_level,
+                          hidden_layers=self.hidden_layers)
         self.check_X(X, 'X')
         self.check_is_fitted()
         if not hasattr(self, 'melfb_'):
