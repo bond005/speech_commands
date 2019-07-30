@@ -110,10 +110,10 @@ def main():
                         help='Path to the directory with labeled data of the TensorFlow Speech Recognition Challenge.')
     parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False, default=None,
                         help='Path to the directory with cached data.')
-    parser.add_argument('-d', '--deep', dest='deep_of_mobilenet', type=int, required=False, default=6,
+    parser.add_argument('--deep', dest='deep_of_mobilenet', type=int, required=False, default=6,
                         help='Number of pre-trained layers from MobileNet which will be used in out speech recognizer '
                              '(in the range from 1 to 13).')
-    parser.add_argument('-l', '--layers', dest='hidden_layers', type=str, required=False, default=None,
+    parser.add_argument('--layers', dest='hidden_layers', type=str, required=False, default=None,
                         help='Sizes of hidden layers which will be added after MobileNet (these sizes must be '
                              'splitted by `-`).')
     cmd_args = parser.parse_args()
