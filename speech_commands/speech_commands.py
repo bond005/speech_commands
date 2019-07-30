@@ -21,11 +21,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     IMAGESIZE = (224, 224)
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
-                 batch_size: int=32, max_epochs: int=100, patience: int=5, verbose: bool=False, warm_start: bool=False,
-                 random_seed=None, cache_dir: Union[str, None]=None):
+                 layer_level: int=3, hidden_layers: tuple=(100,), batch_size: int=32, max_epochs: int=100,
+                 patience: int=5, verbose: bool=False, warm_start: bool=False, random_seed=None,
+                 cache_dir: Union[str, None]=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
+        self.layer_level = layer_level
         self.batch_size = batch_size
         self.max_epochs = max_epochs
         self.patience = patience
@@ -33,6 +35,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.warm_start = warm_start
         self.verbose = verbose
         self.cache_dir = cache_dir
+        self.hidden_layers = hidden_layers
 
     def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
@@ -70,10 +73,37 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.classes_ = classes_dict
             self.classes_reverse_ = classes_dict_reverse
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
-            output_layer = keras.layers.Dense(
-                units=len(self.classes_), activation='softmax',
-                kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(self.recognizer_.get_layer('MobileNet_Base')(input_data))
+            neural_network = self.recognizer_.get_layer('conv1_pad')(input_data)
+            neural_network = self.recognizer_.get_layer('conv1')(neural_network)
+            neural_network = self.recognizer_.get_layer('conv1_bn')(neural_network)
+            neural_network = self.recognizer_.get_layer('conv1_relu')(neural_network)
+            for layer_index in range(1, self.layer_level + 1):
+                if layer_index in {2, 4, 6, 12}:
+                    neural_network = self.recognizer_.get_layer('conv_pad_{0}'.format(layer_index))(neural_network)
+                neural_network = self.recognizer_.get_layer('conv_dw_{0}'.format(layer_index))(neural_network)
+                neural_network = self.recognizer_.get_layer('conv_dw_{0}_bn'.format(layer_index))(neural_network)
+                neural_network = self.recognizer_.get_layer('conv_dw_{0}_relu'.format(layer_index))(neural_network)
+                neural_network = self.recognizer_.get_layer('conv_pw_{0}'.format(layer_index))(neural_network)
+                neural_network = self.recognizer_.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
+                neural_network = self.recognizer_.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
+            neural_network = self.recognizer_.get_layer('PoolingLayer')(neural_network)
+            if len(self.hidden_layers) > 0:
+                hidden_layer = self.recognizer_.get_layer('Dropout1')(neural_network)
+                hidden_layer = self.recognizer_.get_layer(name='HiddenLayer1')(hidden_layer)
+                for layer_index in range(1, len(hidden_layer)):
+                    hidden_layer = self.recognizer_.get_layer('Dropout{0}')(hidden_layer)
+                    hidden_layer = self.recognizer_.get_layer(
+                        name='HiddenLayer{0}'.format(layer_index + 1)
+                    )(hidden_layer)
+                output_layer = keras.layers.Dense(
+                    units=len(self.classes_), activation='softmax',
+                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
+                )(self.recognizer_.get_layer('Dropout{0}'.format(len(self.hidden_layers) + 1))(hidden_layer))
+            else:
+                output_layer = keras.layers.Dense(
+                    units=len(self.classes_), activation='softmax',
+                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
+                )(self.recognizer_.get_layer('Dropout1')(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
@@ -85,11 +115,45 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             mobilenet = keras.applications.mobilenet.MobileNet(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
                 input_tensor=input_data, pooling='avg')
-            mobilenet.name = 'MobileNet_Base'
-            output_layer = keras.layers.Dense(
-                units=len(self.classes_), activation='softmax',
-                kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed), name='OutputLayer'
-            )(mobilenet(input_data))
+            neural_network = mobilenet.get_layer('conv1_pad')(input_data)
+            neural_network = mobilenet.get_layer('conv1')(neural_network)
+            neural_network = mobilenet.get_layer('conv1_bn')(neural_network)
+            neural_network = mobilenet.get_layer('conv1_relu')(neural_network)
+            for layer_index in range(1, self.layer_level + 1):
+                if layer_index in {2, 4, 6, 12}:
+                    neural_network = mobilenet.get_layer('conv_pad_{0}'.format(layer_index))(neural_network)
+                neural_network = mobilenet.get_layer('conv_dw_{0}'.format(layer_index))(neural_network)
+                neural_network = mobilenet.get_layer('conv_dw_{0}_bn'.format(layer_index))(neural_network)
+                neural_network = mobilenet.get_layer('conv_dw_{0}_relu'.format(layer_index))(neural_network)
+                neural_network = mobilenet.get_layer('conv_pw_{0}'.format(layer_index))(neural_network)
+                neural_network = mobilenet.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
+                neural_network = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
+            neural_network = keras.layers.GlobalAveragePooling2D(name='PoolingLayer')(neural_network)
+            if len(self.hidden_layers) > 0:
+                hidden_layer = keras.layers.Dropout(name='Dropout1', dropout=0.3, seed=self.random_seed)(neural_network)
+                hidden_layer = keras.layers.Dense(
+                    units=self.hidden_layers[0], activation='relu',
+                    kernel_initializer=keras.initializers.he_normal(seed=self.random_seed),
+                    name='HiddenLayer1'
+                )(hidden_layer)
+                for layer_index in range(1, len(hidden_layer)):
+                    hidden_layer = keras.layers.Dropout(name='Dropout{0}'.format(layer_index + 1), dropout=0.3,
+                                                        seed=self.random_seed)(hidden_layer)
+                    hidden_layer = keras.layers.Dense(
+                        units=self.hidden_layers[layer_index], activation='relu',
+                        kernel_initializer=keras.initializers.he_normal(seed=self.random_seed),
+                        name='HiddenLayer{0}'.format(layer_index + 1)
+                    )(hidden_layer)
+                output_layer = keras.layers.Dense(
+                    units=len(self.classes_), activation='softmax',
+                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
+                )(keras.layers.Dropout(name='Dropout{0}'.format(len(self.hidden_layers) + 1), dropout=0.3,
+                                       seed=self.random_seed)(hidden_layer))
+            else:
+                output_layer = keras.layers.Dense(
+                    units=len(self.classes_), activation='softmax',
+                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
+                )(keras.layers.Dropout(name='Dropout1', dropout=0.3, seed=self.random_seed)(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
             self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
@@ -271,6 +335,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
     def get_params(self, deep=True):
         return {'sampling_frequency': self.sampling_frequency, 'window_size': self.window_size,
+                'layer_level': self.layer_level, 'hidden_layers': copy.copy(self.hidden_layers),
                 'shift_size': self.shift_size, 'batch_size': self.batch_size, 'max_epochs': self.max_epochs,
                 'patience': self.patience, 'verbose': self.verbose, 'warm_start': self.warm_start,
                 'random_seed': self.random_seed, 'cache_dir': self.cache_dir}
@@ -286,7 +351,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         result.set_params(
             sampling_frequency=self.sampling_frequency, window_size=self.window_size, shift_size=self.shift_size,
             batch_size=self.batch_size, max_epochs=self.max_epochs, patience=self.patience, warm_start=self.warm_start,
-            verbose=self.verbose, random_seed=self.random_seed
+            verbose=self.verbose, random_seed=self.random_seed, layer_level=self.layer_level,
+            hidden_layers=copy.copy(self.hidden_layers)
         )
         try:
             self.check_is_fitted()
@@ -305,7 +371,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         result.set_params(
             sampling_frequency=self.sampling_frequency, window_size=self.window_size, shift_size=self.shift_size,
             batch_size=self.batch_size, max_epochs=self.max_epochs, patience=self.patience, warm_start=self.warm_start,
-            verbose=self.verbose, random_seed=self.random_seed
+            verbose=self.verbose, random_seed=self.random_seed, layer_level=self.layer_level,
+            hidden_layers=copy.deepcopy(self.hidden_layers)
         )
         try:
             self.check_is_fitted()
@@ -431,6 +498,36 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
     @staticmethod
     def check_params(**kwargs):
+        if 'layer_level' not in kwargs:
+            raise ValueError('`layer_level` is not specified!')
+        if (not isinstance(kwargs['layer_level'], int)) and (not isinstance(kwargs['layer_level'], np.int32)) and \
+                (not isinstance(kwargs['layer_level'], np.uint32)):
+            raise ValueError('`layer_level` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(3), type(kwargs['layer_level'])))
+        if kwargs['layer_level'] < 1:
+            raise ValueError('`layer_level` is wrong! Expected a positive integer value in the range from 1 to 13, '
+                             'but {0} is less than 1.'.format(kwargs['layer_level']))
+        if kwargs['layer_level'] > 13:
+            raise ValueError('`layer_level` is wrong! Expected a positive integer value in the range from 1 to 13, '
+                             'but {0} is greater than 13.'.format(kwargs['layer_level']))
+        if 'hidden_layers' not in kwargs:
+            raise ValueError('`hidden_layers` is not specified!')
+        if (not isinstance(kwargs['hidden_layers'], tuple)) and (not isinstance(kwargs['hidden_layers'], list)) and \
+                (not isinstance(kwargs['hidden_layers'], np.ndarray)):
+            raise ValueError('`hidden_layers` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type((3, 4, 5)), type(kwargs['hidden_layers'])))
+        if isinstance(kwargs['hidden_layers'], np.ndarray):
+            if len(kwargs['hidden_layers'].shape) != 1:
+                raise ValueError('`hidden_layers` is wrong! Expected a 1-D array, got {0}-D one.'.format(
+                    len(kwargs['hidden_layers'].shape)))
+        if len(kwargs['hidden_layers']) > 0:
+            for layer_idx in range(len(kwargs['hidden_layers'])):
+                if kwargs['hidden_layers'][layer_idx] != int(kwargs['hidden_layers'][layer_idx]):
+                    raise ValueError('`hidden_layers` is wrong! {0} is wrong size of layer {1}.'.format(
+                        kwargs['hidden_layers'][layer_idx], layer_idx + 1))
+                if kwargs['hidden_layers'][layer_idx] < 1:
+                    raise ValueError('`hidden_layers` is wrong! {0} is wrong size of layer {1}.'.format(
+                        kwargs['hidden_layers'][layer_idx], layer_idx + 1))
         if 'batch_size' not in kwargs:
             raise ValueError('`batch_size` is not specified!')
         if (not isinstance(kwargs['batch_size'], int)) and (not isinstance(kwargs['batch_size'], np.int32)) and \

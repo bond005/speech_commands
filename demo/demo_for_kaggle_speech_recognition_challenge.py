@@ -3,7 +3,7 @@ import codecs
 import os
 import pickle
 import sys
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import librosa
 import numpy as np
@@ -87,14 +87,35 @@ def read_data(dir_name: str) -> Tuple[Tuple[List[np.ndarray], List[int]], Tuple[
     return (X_train, y_train), (X_val, y_val), (X_test, y_test), sampling_frequency
 
 
+def parse_layers(src: Union[str, None]) -> tuple:
+    if src is None:
+        return tuple()
+    prep = src.strip()
+    if len(prep) == 0:
+        return tuple()
+    return tuple(map(
+        lambda it3: int(it3),
+        filter(
+            lambda it2: len(it2) > 0,
+            map(lambda it1: it1.strip(), prep.split('-'))
+        )
+    ))
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument('-m', '--model', dest='model_name', type=str, required=True,
                         help='The binary file with the speech classifier.')
     parser.add_argument('-d', '--data', dest='data_dir_name', type=str, required=True,
                         help='Path to the directory with labeled data of the TensorFlow Speech Recognition Challenge.')
-    parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False,
+    parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False, default=None,
                         help='Path to the directory with cached data.')
+    parser.add_argument('-d', '--deep', dest='deep_of_mobilenet', type=int, required=False, default=6,
+                        help='Number of pre-trained layers from MobileNet which will be used in out speech recognizer '
+                             '(in the range from 1 to 13).')
+    parser.add_argument('-l', '--layers', dest='hidden_layers', type=str, required=False, default=None,
+                        help='Sizes of hidden layers which will be added after MobileNet (these sizes must be '
+                             'splitted by `-`).')
     cmd_args = parser.parse_args()
 
     data_for_training, data_for_validation, data_for_testing, fs = read_data(os.path.normpath(cmd_args.data_dir_name))
@@ -104,6 +125,7 @@ def main():
     print('Sampling frequency is {0} Hz.'.format(fs))
     print('')
 
+    layers = parse_layers(cmd_args.hidden_layers)
     model_name = os.path.normpath(cmd_args.model_name)
     cache_dir_name = None if cmd_args.cache_dir_name is None else os.path.normpath(cmd_args.cache_dir_name)
     if os.path.isfile(model_name):
@@ -112,7 +134,8 @@ def main():
     else:
         recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
                                          batch_size=64, max_epochs=100, patience=7, verbose=True, warm_start=False,
-                                         random_seed=42, cache_dir=cache_dir_name)
+                                         random_seed=42, cache_dir=cache_dir_name, hidden_layers=layers,
+                                         layer_level=cmd_args.deep_of_mobilenet)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation)
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)

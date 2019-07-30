@@ -69,6 +69,21 @@ def read_data_for_training(annotation_file_name: str,
     return sounds, classes_of_sounds, sampling_frequency
 
 
+def parse_layers(src: Union[str, None]) -> tuple:
+    if src is None:
+        return tuple()
+    prep = src.strip()
+    if len(prep) == 0:
+        return tuple()
+    return tuple(map(
+        lambda it3: int(it3),
+        filter(
+            lambda it2: len(it2) > 0,
+            map(lambda it1: it1.strip(), prep.split('-'))
+        )
+    ))
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument('-m', '--model', dest='model_name', type=str, required=True,
@@ -83,6 +98,12 @@ def main():
                         help='Path to the directory with cached data.')
     parser.add_argument('-k', '--kind', dest='kind_of_model', type=str, required=False, default='ann',
                         help='Kind of used model (DTW or ANN).')
+    parser.add_argument('-d', '--deep', dest='deep_of_mobilenet', type=int, required=False, default=6,
+                        help='Number of pre-trained layers from MobileNet which will be used in out speech recognizer '
+                             '(in the range from 1 to 13).')
+    parser.add_argument('-l', '--layers', dest='hidden_layers', type=str, required=False, default=None,
+                        help='Sizes of hidden layers which will be added after MobileNet (these sizes must be '
+                             'splitted by `-`).')
     cmd_args = parser.parse_args()
 
     model_name = os.path.normpath(cmd_args.model_name)
@@ -114,9 +135,11 @@ def main():
             recognizer = pickle.load(fp)
     else:
         if model_kind == 'ann':
+            layers = parse_layers(cmd_args.hidden_layers)
             recognizer = MobilenetRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
                                              batch_size=8, max_epochs=100, patience=5, verbose=True, warm_start=False,
-                                             random_seed=42, cache_dir=cache_dir_name)
+                                             random_seed=42, cache_dir=cache_dir_name, hidden_layers=layers,
+                                             layer_level=cmd_args.deep_of_mobilenet)
             recognizer.fit(sounds_for_training, labels_for_training,
                            validation_data=(sounds_for_validation, labels_for_validation))
         else:
