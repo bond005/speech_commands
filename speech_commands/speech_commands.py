@@ -496,7 +496,9 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2,
                 normalized_spectrograms.shape[1], normalized_spectrograms.shape[2]
             ))
-        return MobilenetRecognizer.COLORMAP(np.repeat(normalized_spectrograms, 2, axis=2))[:, :, :, 0:3] * 255.0
+        return keras.applications.mobilenet.preprocess_input(
+            MobilenetRecognizer.COLORMAP(np.repeat(normalized_spectrograms, 2, axis=2))[:, :, :, 0:3] * 255.0
+        )
 
     @staticmethod
     def check_params(**kwargs):
