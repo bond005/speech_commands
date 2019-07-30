@@ -106,8 +106,6 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                     kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
                 )(self.recognizer_.get_layer('Dropout1')(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
-                                     metrics=['categorical_accuracy'])
         else:
             self.finalize_model()
             self.classes_ = classes_dict
@@ -156,12 +154,9 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                     kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
                 )(keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
-                                     metrics=['categorical_accuracy'])
         if self.verbose:
             if self.cache_dir is not None:
                 print('Cache directory is `{0}`.'.format(self.cache_dir))
-            keras.utils.print_summary(self.recognizer_, line_length=120)
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
         if self.verbose:
@@ -177,8 +172,28 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             use_augmentation=True
         )
         if (X_val is None) or (y_val is None):
+            self.set_trainability_of_model(self.recognizer_, False)
+            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
+                                     metrics=['categorical_accuracy'])
+            if self.verbose:
+                print('')
+                print('Training with frozen base...')
+                print('')
+                keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
                                            verbose=2 if self.verbose else 0)
+            self.set_trainability_of_model(self.recognizer_, True)
+            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
+                                     metrics=['categorical_accuracy'])
+            if self.verbose:
+                print('')
+                print('Training with tuned base...')
+                print('')
+                keras.utils.print_summary(self.recognizer_, line_length=120)
+            self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
+                                           verbose=2 if self.verbose else 0)
+            if self.verbose:
+                print('')
             indices_of_unknown = list(filter(lambda it: y[it] == -1, range(len(y))))
             if len(indices_of_unknown) > 0:
                 indices_of_known = list(filter(lambda it: y[it] != -1, range(len(y))))
@@ -210,9 +225,30 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
                 monitor='val_loss', mode='min'
             )
+            self.set_trainability_of_model(self.recognizer_, False)
+            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
+                                     metrics=['categorical_accuracy'])
+            if self.verbose:
+                print('')
+                print('Training with frozen base...')
+                print('')
+                keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
                                            callbacks=[early_stopping_callback])
+            self.set_trainability_of_model(self.recognizer_, True)
+            self.recognizer_.compile(optimizer='nadam', loss='categorical_crossentropy',
+                                     metrics=['categorical_accuracy'])
+            if self.verbose:
+                print('')
+                print('Training with tuned base...')
+                print('')
+                keras.utils.print_summary(self.recognizer_, line_length=120)
+            self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
+                                           epochs=self.max_epochs, verbose=2 if self.verbose else 0,
+                                           callbacks=[early_stopping_callback])
+            if self.verbose:
+                print('')
             indices_of_unknown_for_training = list(filter(lambda it: y[it] == -1, range(len(y))))
             indices_of_unknown_for_validation = list(filter(lambda it: y_val[it] == -1, range(len(y_val))))
             if (len(indices_of_unknown_for_training) + len(indices_of_unknown_for_validation)) > 0:
@@ -439,6 +475,12 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         else:
             self.set_params(**new_params)
         return self
+
+    @staticmethod
+    def set_trainability_of_model(model: keras.models.Model, trainability: bool):
+        for cur_layer in model.layers:
+            if cur_layer.name.startswith('conv'):
+                cur_layer.trainable = trainability
 
     @staticmethod
     def get_temp_model_name() -> str:
