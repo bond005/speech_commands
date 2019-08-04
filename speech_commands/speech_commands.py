@@ -880,7 +880,7 @@ class TrainsetGenerator(keras.utils.Sequence):
                     )
                     if self.background_sounds != None:
                         number_of_background_sounds = self.background_sounds.shape[0] \
-                            if isinstance(self.background_sounds.shape[0], np.ndarray) else len(self.background_sounds)
+                            if isinstance(self.background_sounds, np.ndarray) else len(self.background_sounds)
                         background_sound = self.background_sounds[random.randint(0, number_of_background_sounds - 1)]
                         sound_length = MobilenetRecognizer.strip_sound(background_sound)
                         if sound_length > 0:
