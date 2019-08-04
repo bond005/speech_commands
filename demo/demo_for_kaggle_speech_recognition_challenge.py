@@ -106,6 +106,18 @@ def read_data(dir_name: str) -> Tuple[Tuple[List[np.ndarray], List[int]], Tuple[
     return (X_train, y_train), (X_val, y_val), (X_test, y_test), background_sounds, sampling_frequency
 
 
+def filter_data(X_train: List[np.ndarray], y_train: Union[List[int], None]=None) -> \
+        Union[Tuple[List[np.ndarray], List[int]], List[np.ndarray]]:
+    nonempty_indices = []
+    for sound_idx in range(len(X_train)):
+        sound_length = MobilenetRecognizer.strip_sound(X_train[sound_idx])
+        if sound_length > 0:
+            nonempty_indices.append(sound_idx)
+    if y_train is None:
+        return [X_train[idx] for idx in nonempty_indices]
+    return [X_train[idx] for idx in nonempty_indices], [y_train[idx] for idx in nonempty_indices]
+
+
 def parse_layers(src: Union[str, None]) -> tuple:
     if src is None:
         return tuple()
@@ -141,7 +153,17 @@ def main():
     print('Number of sounds for training is {0}.'.format(len(data_for_training[0])))
     print('Number of sounds for validation is {0}.'.format(len(data_for_validation[0])))
     print('Number of sounds for final testing is {0}.'.format(len(data_for_testing[0])))
+    print('Number of background sounds is {0}.'.format(len(background_sounds)))
     print('Sampling frequency is {0} Hz.'.format(fs))
+    print('')
+    data_for_training = filter_data(data_for_training[0], data_for_training[1])
+    data_for_validation = filter_data(data_for_validation[0], data_for_validation[1])
+    data_for_testing = filter_data(data_for_testing[0], data_for_testing[1])
+    background_sounds = filter_data(background_sounds)
+    print('Number of sounds for training after filtering is {0}.'.format(len(data_for_training[0])))
+    print('Number of sounds for validation after filtering is {0}.'.format(len(data_for_validation[0])))
+    print('Number of sounds for final testing after filtering is {0}.'.format(len(data_for_testing[0])))
+    print('Number of background sounds after filtering is {0}.'.format(len(background_sounds)))
     print('')
 
     layers = parse_layers(cmd_args.hidden_layers)
