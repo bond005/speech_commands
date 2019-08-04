@@ -173,7 +173,7 @@ def main():
             recognizer = pickle.load(fp)
     else:
         recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
-                                         batch_size=64, max_epochs=100, patience=7, verbose=True, warm_start=False,
+                                         batch_size=128, max_epochs=100, patience=7, verbose=True, warm_start=False,
                                          random_seed=42, hidden_layers=layers, layer_level=cmd_args.deep_of_mobilenet)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation,
                        background=background_sounds)
