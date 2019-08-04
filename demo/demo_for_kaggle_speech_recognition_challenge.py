@@ -18,7 +18,7 @@ except:
 
 
 def read_data(dir_name: str) -> Tuple[Tuple[List[np.ndarray], List[int]], Tuple[List[np.ndarray], List[int]],
-                                      Tuple[List[np.ndarray], List[int]], int]:
+                                      Tuple[List[np.ndarray], List[int]], List[np.ndarray], int]:
     core_words = {"yes", "no", "up", "down", "left", "right", "on", "off", "stop", "go", "zero", "one", "two", "three",
                   "four", "five", "six", "seven", "eight", "nine"}
     if not os.path.isdir(os.path.normpath(dir_name)):
@@ -26,6 +26,9 @@ def read_data(dir_name: str) -> Tuple[Tuple[List[np.ndarray], List[int]], Tuple[
     if not os.path.isdir(os.path.join(os.path.normpath(dir_name), 'audio')):
         raise ValueError('The directory `{0}` does not exist!'.format(
             os.path.join(os.path.normpath(dir_name), 'audio')))
+    if not os.path.isdir(os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_')):
+        raise ValueError('The directory `{0}` does not exist!'.format(
+            os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_')))
     if not os.path.isfile(os.path.join(os.path.normpath(dir_name), 'testing_list.txt')):
         raise ValueError('The file `{0}` does not exist!'.format(
             os.path.join(os.path.normpath(dir_name), 'testing_list.txt')))
@@ -84,7 +87,23 @@ def read_data(dir_name: str) -> Tuple[Tuple[List[np.ndarray], List[int]], Tuple[
         else:
             X_train.append(new_sound)
             y_train.append(class_name)
-    return (X_train, y_train), (X_val, y_val), (X_test, y_test), sampling_frequency
+    background_sounds = []
+    names_of_background_sounds = list(filter(
+        lambda it: it.lower().endswith('.wav'),
+        os.listdir(os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_'))
+    ))
+    if len(names_of_background_sounds) == 0:
+        raise ValueError('There are no sounds in the `{0}`.'.format(
+            os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_')))
+    for cur_sound_name in names_of_background_sounds:
+        full_sound_name = os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_', cur_sound_name)
+        new_sound, new_sampling_frequency = librosa.core.load(path=full_sound_name, sr=None, mono=True)
+        if sampling_frequency != new_sampling_frequency:
+            raise ValueError('Sampling frequency of the sound `{0}` is {1}, but target sampling frequency '
+                             'is {2}!'.format(full_sound_name, new_sampling_frequency, sampling_frequency))
+        background_sounds.append(new_sound)
+        del new_sound
+    return (X_train, y_train), (X_val, y_val), (X_test, y_test), background_sounds, sampling_frequency
 
 
 def parse_layers(src: Union[str, None]) -> tuple:
@@ -108,8 +127,6 @@ def main():
                         help='The binary file with the speech classifier.')
     parser.add_argument('-d', '--data', dest='data_dir_name', type=str, required=True,
                         help='Path to the directory with labeled data of the TensorFlow Speech Recognition Challenge.')
-    parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False, default=None,
-                        help='Path to the directory with cached data.')
     parser.add_argument('--deep', dest='deep_of_mobilenet', type=int, required=False, default=6,
                         help='Number of pre-trained layers from MobileNet which will be used in out speech recognizer '
                              '(in the range from 1 to 13).')
@@ -118,7 +135,9 @@ def main():
                              'splitted by `-`).')
     cmd_args = parser.parse_args()
 
-    data_for_training, data_for_validation, data_for_testing, fs = read_data(os.path.normpath(cmd_args.data_dir_name))
+    data_for_training, data_for_validation, data_for_testing, background_sounds, fs = read_data(
+        os.path.normpath(cmd_args.data_dir_name)
+    )
     print('Number of sounds for training is {0}.'.format(len(data_for_training[0])))
     print('Number of sounds for validation is {0}.'.format(len(data_for_validation[0])))
     print('Number of sounds for final testing is {0}.'.format(len(data_for_testing[0])))
@@ -127,16 +146,15 @@ def main():
 
     layers = parse_layers(cmd_args.hidden_layers)
     model_name = os.path.normpath(cmd_args.model_name)
-    cache_dir_name = None if cmd_args.cache_dir_name is None else os.path.normpath(cmd_args.cache_dir_name)
     if os.path.isfile(model_name):
         with open(model_name, 'rb') as fp:
             recognizer = pickle.load(fp)
     else:
         recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
                                          batch_size=64, max_epochs=100, patience=7, verbose=True, warm_start=False,
-                                         random_seed=42, cache_dir=cache_dir_name, hidden_layers=layers,
-                                         layer_level=cmd_args.deep_of_mobilenet)
-        recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation)
+                                         random_seed=42, hidden_layers=layers, layer_level=cmd_args.deep_of_mobilenet)
+        recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation,
+                       background=background_sounds)
         with open(model_name, 'wb') as fp:
             pickle.dump(recognizer, fp)
     print('')

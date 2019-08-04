@@ -1,16 +1,17 @@
 import copy
 import os
-import pickle
 import random
 import tempfile
 import time
 from typing import List, Tuple, Union
+import warnings
 
 import keras
 import keras.backend as K
 import librosa
 from matplotlib.pyplot import cm
 import numpy as np
+from scipy.signal import resample
 from sklearn.base import ClassifierMixin, BaseEstimator
 from sklearn.metrics import f1_score
 from sklearn.utils.validation import check_is_fitted
@@ -22,8 +23,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
                  layer_level: int=3, hidden_layers: tuple=(100,), batch_size: int=32, max_epochs: int=100,
-                 patience: int=5, verbose: bool=False, warm_start: bool=False, random_seed=None,
-                 cache_dir: Union[str, None]=None):
+                 patience: int=5, verbose: bool=False, warm_start: bool=False, random_seed=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
@@ -34,14 +34,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.random_seed = random_seed
         self.warm_start = warm_start
         self.verbose = verbose
-        self.cache_dir = cache_dir
         self.hidden_layers = hidden_layers
 
     def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed, cache_dir=self.cache_dir, layer_level=self.layer_level,
+                          random_seed=self.random_seed, layer_level=self.layer_level,
                           hidden_layers=self.hidden_layers)
         classes_dict, classes_dict_reverse = self.check_Xy(X, 'X', y, 'y')
         n_train = len(y)
@@ -68,7 +67,14 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         else:
             X_val = None
             y_val = None
+        if 'background' in kwargs:
+            self.check_X(kwargs['background'], 'background')
+            background_sounds = kwargs['background']
+        else:
+            background_sounds = None
         self.update_random_seed()
+        if not hasattr(self, 'melfb_'):
+            self.update_triangle_filters()
         if self.warm_start:
             self.check_is_fitted()
             self.classes_ = classes_dict
@@ -110,6 +116,9 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.finalize_model()
             self.classes_ = classes_dict
             self.classes_reverse_ = classes_dict_reverse
+            self.min_amplitude_, self.max_amplitude_ = self.calculate_bounds_of_amplitude(
+                X, self.window_size, self.shift_size, self.sampling_frequency, self.melfb_
+            )
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
             mobilenet = keras.applications.mobilenet.MobileNet(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
@@ -127,7 +136,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 neural_network = mobilenet.get_layer('conv_pw_{0}'.format(layer_index))(neural_network)
                 neural_network = mobilenet.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
                 neural_network = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
-            neural_network = keras.layers.GlobalAveragePooling2D(name='PoolingLayer')(neural_network)
+            neural_network = keras.layers.GlobalMaxPooling2D(name='PoolingLayer')(neural_network)
             if len(self.hidden_layers) > 0:
                 hidden_layer = keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network)
                 hidden_layer = keras.layers.Dense(
@@ -155,11 +164,6 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 )(keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
         if self.verbose:
-            if self.cache_dir is not None:
-                print('Cache directory is `{0}`.'.format(self.cache_dir))
-        if not hasattr(self, 'melfb_'):
-            self.update_triangle_filters()
-        if self.verbose:
             print('Sampling frequency is {0} Hz.'.format(self.sampling_frequency))
         if 'sample_weight' in kwargs:
             sample_weight = kwargs['sample_weight']
@@ -168,8 +172,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         trainset_generator = TrainsetGenerator(
             X=X, y=y, batch_size=self.batch_size, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
-            classes=self.classes_, sample_weight=sample_weight, cache_dir_name=self.cache_dir, suffix='train',
-            use_augmentation=True
+            min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_, classes=self.classes_,
+            sample_weight=sample_weight, use_augmentation=True, background_sounds=background_sounds
         )
         if (X_val is None) or (y_val is None):
             self.set_trainability_of_model(self.recognizer_, False)
@@ -200,11 +204,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 max_probabilities_for_known = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X, batch_size=self.batch_size,
                                      melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
+                                     min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_,
                                      sampling_frequency=self.sampling_frequency, indices=indices_of_known)
                 ).max(axis=1)
                 max_probabilities_for_unknown = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X, batch_size=self.batch_size,
                                      melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
+                                     min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_,
                                      sampling_frequency=self.sampling_frequency, indices=indices_of_unknown)
                 ).max(axis=1)
                 self.threshold_ = self.find_optimal_threshold(max_probabilities_for_known,
@@ -213,13 +219,14 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 self.threshold_ = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X, batch_size=self.batch_size,
                                      melfb=self.melfb_, window_size=self.window_size, shift_size=self.shift_size,
+                                     min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_,
                                      sampling_frequency=self.sampling_frequency)
                 ).max(axis=1).min()
         else:
             validset_generator = TrainsetGenerator(
                 X=X_val, y=y_val, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
                 shift_size=self.shift_size, sampling_frequency=self.sampling_frequency, classes=self.classes_,
-                sample_weight=None, cache_dir_name=self.cache_dir, suffix='valid'
+                min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_, sample_weight=None
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
@@ -256,7 +263,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 max_probabilities_for_known = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
                                      window_size=self.window_size, shift_size=self.shift_size,
-                                     sampling_frequency=self.sampling_frequency, indices=indices_of_known)
+                                     sampling_frequency=self.sampling_frequency, indices=indices_of_known,
+                                     min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
                 ).max(axis=1)
                 if (len(indices_of_unknown_for_training) > 0) and (len(indices_of_unknown_for_validation) > 0):
                     max_probabilities_for_unknown = np.concatenate(
@@ -265,13 +273,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                                 DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_,
                                                  window_size=self.window_size, shift_size=self.shift_size,
                                                  sampling_frequency=self.sampling_frequency,
-                                                 indices=indices_of_unknown_for_training)
+                                                 indices=indices_of_unknown_for_training,
+                                                 min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
                             ).max(axis=1),
                             self.recognizer_.predict_generator(
                                 DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
                                                  window_size=self.window_size, shift_size=self.shift_size,
                                                  sampling_frequency=self.sampling_frequency,
-                                                 indices=indices_of_unknown_for_validation)
+                                                 indices=indices_of_unknown_for_validation,
+                                                 min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
                             ).max(axis=1)
                         )
                     )
@@ -280,14 +290,16 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                         DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_,
                                          window_size=self.window_size, shift_size=self.shift_size,
                                          sampling_frequency=self.sampling_frequency,
-                                         indices=indices_of_unknown_for_training)
+                                         indices=indices_of_unknown_for_training,
+                                         min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
                     ).max(axis=1)
                 else:
                     max_probabilities_for_unknown = self.recognizer_.predict_generator(
                         DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
                                          window_size=self.window_size, shift_size=self.shift_size,
                                          sampling_frequency=self.sampling_frequency,
-                                         indices=indices_of_unknown_for_validation)
+                                         indices=indices_of_unknown_for_validation,
+                                         min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
                     ).max(axis=1)
                 self.threshold_ = self.find_optimal_threshold(max_probabilities_for_known,
                                                               max_probabilities_for_unknown)
@@ -295,7 +307,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 self.threshold_ = self.recognizer_.predict_generator(
                     DatasetGenerator(X=X_val, batch_size=self.batch_size, melfb=self.melfb_,
                                      window_size=self.window_size, shift_size=self.shift_size,
-                                     sampling_frequency=self.sampling_frequency)
+                                     sampling_frequency=self.sampling_frequency,
+                                     min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
                 ).max(axis=1).min()
         if self.verbose:
             print('Best threshold for probability is {0:.2f}.'.format(self.threshold_))
@@ -317,15 +330,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed, cache_dir=self.cache_dir, layer_level=self.layer_level,
-                          hidden_layers=self.hidden_layers)
+                          random_seed=self.random_seed, layer_level=self.layer_level, hidden_layers=self.hidden_layers)
         self.check_X(X, 'X')
         self.check_is_fitted()
         if not hasattr(self, 'melfb_'):
             self.update_triangle_filters()
         return self.recognizer_.predict_generator(
             DatasetGenerator(X=X, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
-                             shift_size=self.shift_size, sampling_frequency=self.sampling_frequency)
+                             shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
+                             min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_)
         )
 
     def predict_log_proba(self, X: Union[list, tuple, np.ndarray]) -> np.ndarray:
@@ -364,19 +377,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                                           fmin=350.0, fmax=6000.0)
 
     def check_is_fitted(self):
-        check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'threshold_'])
-
-    def get_spectrogram_length(self, sound: np.ndarray) -> int:
-        n_window = int(round(self.sampling_frequency * self.window_size))
-        n_shift = int(round(self.sampling_frequency * self.shift_size))
-        return int(np.ceil((sound.shape[0] - n_window) / float(n_shift)))
+        check_is_fitted(self, ['recognizer_', 'classes_', 'classes_reverse_', 'threshold_', 'min_amplitude_',
+                               'max_amplitude_'])
 
     def get_params(self, deep=True):
         return {'sampling_frequency': self.sampling_frequency, 'window_size': self.window_size,
                 'layer_level': self.layer_level, 'hidden_layers': copy.copy(self.hidden_layers),
                 'shift_size': self.shift_size, 'batch_size': self.batch_size, 'max_epochs': self.max_epochs,
                 'patience': self.patience, 'verbose': self.verbose, 'warm_start': self.warm_start,
-                'random_seed': self.random_seed, 'cache_dir': self.cache_dir}
+                'random_seed': self.random_seed}
 
     def set_params(self, **params):
         for parameter, value in params.items():
@@ -440,6 +449,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             params['classes_'] = copy.deepcopy(self.classes_)
             params['classes_reverse_'] = copy.deepcopy(self.classes_reverse_)
             params['threshold_'] = self.threshold_
+            params['max_amplitude_'] = self.max_amplitude_
+            params['min_amplitude_'] = self.min_amplitude_
             model_file_name = self.get_temp_model_name()
             try:
                 self.recognizer_.save(model_file_name)
@@ -458,12 +469,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(**new_params)
         self.finalize_model()
         is_fitted = ('classes_' in new_params) and ('classes_reverse_' in new_params) and \
-                    ('threshold_' in new_params) and ('model_data_' in new_params)
+                    ('threshold_' in new_params) and ('model_data_' in new_params) and \
+                    ('max_amplitude_' in new_params) and ('min_amplitude_' in new_params)
         if is_fitted:
             self.set_params(**new_params)
             self.classes_reverse_ = copy.deepcopy(new_params['classes_reverse_'])
             self.classes_ = copy.deepcopy(new_params['classes_'])
             self.threshold_ = new_params['threshold_']
+            self.max_amplitude_ = new_params['max_amplitude_']
+            self.min_amplitude_ = new_params['min_amplitude_']
             model_file_name = self.get_temp_model_name()
             try:
                 with open(model_file_name, 'wb') as fp:
@@ -487,31 +501,73 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         return tempfile.NamedTemporaryFile(mode='w', suffix='sound_recognizer.h5y').name
 
     @staticmethod
+    def calculate_bounds_of_amplitude(sounds: Union[np.ndarray, List[np.ndarray]], window_size: float,
+                                      shift_size: float, sampling_frequency: int,
+                                      melfb: np.ndarray) -> Tuple[float, float]:
+        values = []
+        n_sounds = sounds.shape[0] if isinstance(sounds, np.ndarray) else len(sounds)
+        for sound_idx in range(n_sounds):
+            new_spectrogram = MobilenetRecognizer.sound_to_melspectrogram(sounds[sound_idx], window_size, shift_size,
+                                                                          sampling_frequency, melfb)
+            if new_spectrogram is not None:
+                values.append(
+                    np.resize(
+                        new_spectrogram,
+                        new_shape=(new_spectrogram.shape[0] * new_spectrogram.shape[1],)
+                    )
+                )
+                del new_spectrogram
+        values = np.sort(np.concatenate(values))
+        n = int(round(0.02 * (values.shape[0] - 1)))
+        return values[n], values[values.shape[0] - 1 - n]
+
+    @staticmethod
+    def strip_sound(sound: np.ndarray) -> int:
+        sample_idx = sound.shape[0] - 1
+        while sample_idx >= 0:
+            if abs(sound[sample_idx]) > 1e-6:
+                break
+            sample_idx -= 1
+        return  sample_idx + 1
+
+    @staticmethod
     def sound_to_melspectrogram(sound: np.ndarray, window_size: float, shift_size: float, sampling_frequency: int,
-                                melfb: np.ndarray) -> np.ndarray:
+                                melfb: np.ndarray) -> Union[np.ndarray, None]:
         n_window = int(round(sampling_frequency * window_size))
         n_shift = int(round(sampling_frequency * shift_size))
         n_fft = MobilenetRecognizer.get_n_fft(sampling_frequency, window_size)
-        specgram = librosa.core.stft(y=sound, n_fft=n_fft, hop_length=n_shift, win_length=n_window, window='hamming')
+        sound_length = MobilenetRecognizer.strip_sound(sound)
+        if sound_length == 0:
+            warnings.warn('Sound is empty!')
+            return None
+        if sound_length < (n_window + n_shift):
+            warnings.warn('Sound is too short!')
+            return None
+        specgram = librosa.core.stft(y=sound[0:sound_length], n_fft=n_fft, hop_length=n_shift, win_length=n_window,
+                                     window='hamming')
         specgram = np.asarray(np.absolute(specgram), dtype=np.float64)
         return np.dot(melfb, specgram).transpose()
 
     @staticmethod
-    def normalize_melspectrogram(spectrogram: np.ndarray) -> np.ndarray:
-        values = np.sort(spectrogram.reshape((spectrogram.shape[0] * spectrogram.shape[1],)))
-        n = int(round(0.01 * values.shape[0]))
-        max_value = values[-n - 1]
-        min_value = values[n]
-        del values
+    def normalize_melspectrogram(spectrogram: Union[np.ndarray, None],
+                                 amplitude_bounds: Union[Tuple[float, float], None]=None) -> Union[np.ndarray, None]:
+        if spectrogram is None:
+            return np.zeros(shape=(MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
+                            dtype=np.float32)
+        if amplitude_bounds is None:
+            values = np.sort(spectrogram.reshape((spectrogram.shape[0] * spectrogram.shape[1],)))
+            n = int(round(0.02 * values.shape[0]))
+            max_value = values[-n - 1]
+            min_value = values[n]
+            del values
+        else:
+            max_value = amplitude_bounds[1]
+            min_value = amplitude_bounds[0]
         normalized = np.asarray(spectrogram - min_value, dtype=np.float64)
         if max_value > min_value:
             normalized /= (max_value - min_value)
-            for row_idx in range(normalized.shape[0]):
-                for col_idx in range(normalized.shape[1]):
-                    if normalized[row_idx][col_idx] < 0.0:
-                        normalized[row_idx][col_idx] = 0.0
-                    elif normalized[row_idx][col_idx] > 1.0:
-                        normalized[row_idx][col_idx] = 1.0
+            np.putmask(normalized, normalized < 0.0, 0.0)
+            np.putmask(normalized, normalized > 1.0, 1.0)
             if normalized.shape[0] < MobilenetRecognizer.IMAGESIZE[0]:
                 normalized = np.vstack(
                     (
@@ -669,12 +725,6 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                     (not isinstance(kwargs['random_seed'], np.uint32)):
                 raise ValueError('`random_seed` is wrong! Expected `{0}`, got `{1}`.'.format(
                     type(3), type(kwargs['random_seed'])))
-        if 'cache_dir' not in kwargs:
-            raise ValueError('`cache_dir` is not specified!')
-        if kwargs['cache_dir'] is not None:
-            if (not hasattr(kwargs['cache_dir'], 'split')) or (not hasattr(kwargs['cache_dir'], 'strip')):
-                raise ValueError('`cache_dir` is wrong! Expected `{0}`, got `{1}`.'.format(
-                    type('3s'), type(kwargs['cache_dir'])))
         n_fft = MobilenetRecognizer.get_n_fft(kwargs['sampling_frequency'], kwargs['window_size'])
         if (MobilenetRecognizer.IMAGESIZE[1] // 2) >= (n_fft // 3):
             raise ValueError('`window_size` is too small for specified sampling frequency!')
@@ -776,10 +826,11 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
 
 class TrainsetGenerator(keras.utils.Sequence):
-    def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
-                 batch_size: int, window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
-                 classes: dict, sample_weight: Union[list, tuple, np.ndarray, None]=None,
-                 cache_dir_name: Union[str, None]=None, suffix: str='', use_augmentation: bool=False):
+    def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray], batch_size: int,
+                 window_size: float, shift_size: float, sampling_frequency: int, melfb: np.ndarray,
+                 min_amplitude: float, max_amplitude: float, classes: dict,
+                 sample_weight: Union[list, tuple, np.ndarray, None]=None, use_augmentation: bool=False,
+                 background_sounds: Union[list, tuple, np.ndarray, None]=None):
         self.X = X
         self.y = y
         self.sample_weight = sample_weight
@@ -789,24 +840,15 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
         self.classes = classes
+        self.min_amplitude = min_amplitude
+        self.max_amplitude = max_amplitude
         self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
-        if use_augmentation:
-            self.image_augmenator = keras.preprocessing.image.ImageDataGenerator(
-                width_shift_range=0.25,
-                height_shift_range=0.15,
-                zoom_range=0.25,
-                dtype=np.float32
-            )
-        else:
-            self.image_augmenator = None
+        self.use_augmentation = use_augmentation
+        self.background_sounds = background_sounds
         assert len(self.indices) > 2
         assert min(self.indices) >= 0
         assert max(self.indices) < len(y)
         assert len(self.indices) == len(set(self.indices))
-        self.cache_dir_name = None if cache_dir_name is None else os.path.normpath(cache_dir_name)
-        self.suffix = suffix.strip()
-        if len(self.suffix) == 0:
-            raise ValueError('Suffix for cached files must be non-empty!')
 
     def __len__(self):
         return int(np.ceil(len(self.indices) / float(self.batch_size)))
@@ -815,35 +857,83 @@ class TrainsetGenerator(keras.utils.Sequence):
         batch_start = idx * self.batch_size
         batch_end = min((idx + 1) * self.batch_size, len(self.indices))
         batch_size = batch_end - batch_start
-        if (self.cache_dir_name is None) or \
-                (not os.path.isfile(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)))):
-            normalized_spectrograms = np.empty(
-                (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
-                dtype=np.float32
-            )
-            targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
-            for sample_idx in range(batch_start, batch_end):
-                spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
-                    sound=self.X[self.indices[sample_idx]], sampling_frequency=self.sampling_frequency,
-                    melfb=self.melfb,
-                    window_size=self.window_size, shift_size=self.shift_size
-                )
+        normalized_spectrograms = np.empty(
+            (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
+            dtype=np.float32
+        )
+        targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
+        for sample_idx in range(batch_start, batch_end):
+            source_sound = self.X[self.indices[sample_idx]]
+            sound_length = MobilenetRecognizer.strip_sound(source_sound)
+            if sound_length == 0:
                 normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
-                    spectrogram=spectrogram
+                    spectrogram=None, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
                 )
-                targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
-            if self.cache_dir_name is not None:
-                with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'wb') as fp:
-                    pickle.dump((normalized_spectrograms, targets), fp)
-        else:
-            with open(os.path.join(self.cache_dir_name, 'batch_{0}_{1}.pkl'.format(self.suffix, idx)), 'rb') as fp:
-                normalized_spectrograms, targets = pickle.load(fp)
+            else:
+                if self.use_augmentation:
+                    bins_per_octave = 24
+                    pitch_pm = 4
+                    pitch_change = pitch_pm * 2 * (np.random.uniform() - 0.5)
+                    augmented_sound = librosa.effects.pitch_shift(
+                        source_sound[0:sound_length].astype("float64"), self.sampling_frequency, n_steps=pitch_change,
+                        bins_per_octave=bins_per_octave
+                    )
+                    if self.background_sounds != None:
+                        number_of_background_sounds = self.background_sounds.shape[0] \
+                            if isinstance(self.background_sounds.shape[0], np.ndarray) else len(self.background_sounds)
+                        background_sound = self.background_sounds[random.randint(0, number_of_background_sounds - 1)]
+                        sound_length = MobilenetRecognizer.strip_sound(background_sound)
+                        if sound_length > 0:
+                            if sound_length > len(augmented_sound):
+                                sound_start = random.randint(0, sound_length - len(augmented_sound))
+                                background_sound = background_sound[sound_start:(sound_start + len(augmented_sound))]
+                            elif sound_length < len(augmented_sound):
+                                sound_start = random.randint(0, len(augmented_sound) - sound_length)
+                                if (sound_start > 0) and ((sound_start + sound_length) < len(augmented_sound)):
+                                    background_sound = np.concatenate(
+                                        (
+                                            np.zeros((sound_start,), dtype=background_sound.dtype),
+                                            background_sound,
+                                            np.zeros((len(augmented_sound) - (sound_start + sound_length),),
+                                                     dtype=background_sound.dtype)
+                                        )
+                                    )
+                                elif sound_start > 0:
+                                    background_sound = np.concatenate(
+                                        (
+                                            np.zeros((sound_start,), dtype=background_sound.dtype),
+                                            background_sound,
+                                        )
+                                    )
+                                else:
+                                    background_sound = np.concatenate(
+                                        (
+                                            background_sound,
+                                            np.zeros((len(augmented_sound) - (sound_start + sound_length),),
+                                                     dtype=background_sound.dtype)
+                                        )
+                                    )
+                            augmented_sound = augmented_sound * np.random.uniform(0.8, 1.2) + \
+                                              background_sound.astype("float64") * np.random.uniform(0, 0.1)
+                    spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
+                        sound=augmented_sound, sampling_frequency=self.sampling_frequency,
+                        melfb=self.melfb, window_size=self.window_size, shift_size=self.shift_size,
+                    )
+                else:
+                    spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
+                        sound=source_sound[0:sound_length], sampling_frequency=self.sampling_frequency,
+                        melfb=self.melfb, window_size=self.window_size, shift_size=self.shift_size,
+                    )
+                if self.use_augmentation:
+                    speed_rate = np.random.uniform(0.9, 1.1)
+                    new_length = int(round(speed_rate * spectrogram.shape[0]))
+                    if (new_length != spectrogram.shape[0]) and (new_length > 2):
+                        spectrogram = resample(spectrogram, num=new_length, axis=0)
+                normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
+                    spectrogram=spectrogram, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
+                )
+            targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
         spectrograms_as_images = MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
-        if self.image_augmenator is not None:
-            for sample_idx in range(spectrograms_as_images.shape[0]):
-                spectrograms_as_images[sample_idx] = self.image_augmenator.random_transform(
-                    spectrograms_as_images[sample_idx]
-                )
         del normalized_spectrograms
         if self.sample_weight is None:
             return spectrograms_as_images, targets
@@ -855,13 +945,16 @@ class TrainsetGenerator(keras.utils.Sequence):
 
 class DatasetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], batch_size: int, window_size: float, shift_size: float,
-                 sampling_frequency: int, melfb: np.ndarray, indices: Union[np.ndarray, List[int], None]=None):
+                 sampling_frequency: int, melfb: np.ndarray, min_amplitude: float, max_amplitude: float,
+                 indices: Union[np.ndarray, List[int], None]=None):
         self.X = X
         self.batch_size = batch_size
         self.window_size = window_size
         self.shift_size = shift_size
         self.sampling_frequency = sampling_frequency
         self.melfb = melfb
+        self.min_amplitude = min_amplitude
+        self.max_amplitude = max_amplitude
         self.indices = indices
         if indices is not None:
             if len(indices) != len(set(indices.tolist()) if isinstance(indices, np.ndarray) else set(indices)):
@@ -888,7 +981,7 @@ class DatasetGenerator(keras.utils.Sequence):
                 window_size=self.window_size, shift_size=self.shift_size
             )
             normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
-                spectrogram
+                spectrogram, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
             )
         return MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
 
@@ -1073,12 +1166,8 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
             del values
             if max_value > min_value:
                 mel_specgram = (mel_specgram - min_value) / (max_value - min_value)
-                for row_idx in range(mel_specgram.shape[0]):
-                    for col_idx in range(mel_specgram.shape[1]):
-                        if mel_specgram[row_idx][col_idx] < 0.0:
-                            mel_specgram[row_idx][col_idx] = 0.0
-                        elif mel_specgram[row_idx][col_idx] > 1.0:
-                            mel_specgram[row_idx][col_idx] = 1.0
+                np.putmask(mel_specgram, mel_specgram < 0.0, 0.0)
+                np.putmask(mel_specgram, mel_specgram > 1.0, 1.0)
             else:
                 mel_specgram = np.zeros(shape=mel_specgram.shape, dtype=mel_specgram.dtype)
             list_of_melspecgrams.append(mel_specgram)

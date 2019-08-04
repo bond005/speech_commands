@@ -94,8 +94,6 @@ def main():
                         help='Path to the CSV file with data for validation.')
     parser.add_argument('-e', '--test', dest='test_file_name', type=str, required=True,
                         help='Path to the CSV file with data for final evaluation.')
-    parser.add_argument('-c', '--cache', dest='cache_dir_name', type=str, required=False,
-                        help='Path to the directory with cached data.')
     parser.add_argument('-k', '--kind', dest='kind_of_model', type=str, required=False, default='ann',
                         help='Kind of used model (DTW or ANN).')
     parser.add_argument('--deep', dest='deep_of_mobilenet', type=int, required=False, default=6,
@@ -110,7 +108,6 @@ def main():
     train_data_name = os.path.normpath(cmd_args.train_file_name)
     validation_data_name = os.path.normpath(cmd_args.val_file_name)
     test_data_name = os.path.normpath(cmd_args.test_file_name)
-    cache_dir_name = None if cmd_args.cache_dir_name is None else os.path.normpath(cmd_args.cache_dir_name)
     model_kind = cmd_args.kind_of_model.strip().lower()
     if model_kind not in {'ann', 'dtw'}:
         raise ValueError('{0} is unknown kind of model!'.format(cmd_args.kind_of_model))
@@ -138,7 +135,7 @@ def main():
             layers = parse_layers(cmd_args.hidden_layers)
             recognizer = MobilenetRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
                                              batch_size=8, max_epochs=100, patience=5, verbose=True, warm_start=False,
-                                             random_seed=42, cache_dir=cache_dir_name, hidden_layers=layers,
+                                             random_seed=42, hidden_layers=layers,
                                              layer_level=cmd_args.deep_of_mobilenet)
             recognizer.fit(sounds_for_training, labels_for_training,
                            validation_data=(sounds_for_validation, labels_for_validation))
