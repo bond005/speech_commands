@@ -119,6 +119,11 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.min_amplitude_, self.max_amplitude_ = self.calculate_bounds_of_amplitude(
                 X, self.window_size, self.shift_size, self.sampling_frequency, self.melfb_
             )
+            if self.verbose:
+                print('Sampling frequency is {0} Hz.'.format(self.sampling_frequency))
+                print('Minimal amplitude value of spectrogram is {0:.6f}.'.format(self.min_amplitude_))
+                print('Maximal amplitude value of spectrogram is {0:.6f}.'.format(self.max_amplitude_))
+                print('')
             input_data = keras.layers.Input(shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), name='InputSpectrogram')
             mobilenet = keras.applications.mobilenet.MobileNet(
                 input_shape=(self.IMAGESIZE[0], self.IMAGESIZE[1], 3), include_top=False, weights='imagenet',
@@ -163,8 +168,6 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                     kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
                 )(keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
-        if self.verbose:
-            print('Sampling frequency is {0} Hz.'.format(self.sampling_frequency))
         if 'sample_weight' in kwargs:
             sample_weight = kwargs['sample_weight']
         else:
