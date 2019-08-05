@@ -563,7 +563,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                                  amplitude_bounds: Union[Tuple[float, float], None]=None) -> Union[np.ndarray, None]:
         if spectrogram is None:
             return np.zeros(shape=(MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
-                            dtype=np.float32)
+                            dtype=np.float64)
         if amplitude_bounds is None:
             values = np.sort(spectrogram.reshape((spectrogram.shape[0] * spectrogram.shape[1],)))
             n = int(round(0.02 * values.shape[0]))
