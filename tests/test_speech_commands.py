@@ -490,6 +490,9 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertEqual(normalized.shape[1], MobilenetRecognizer.IMAGESIZE[1] // 2)
         self.assertAlmostEqual(normalized.min(), 0.0, places=5)
         self.assertAlmostEqual(normalized.max(), 1.0, places=5)
+        values = sorted(normalized.reshape((normalized.shape[0] * normalized.shape[1],)).tolist())
+        self.assertGreater(values[len(values) // 2], 1e-1)
+        self.assertLess(values[len(values) // 2], 1.0 - 1e-1)
 
     def test_spectrograms_to_images(self):
         sound_name = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data', 'audio',
@@ -504,7 +507,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         images = MobilenetRecognizer.spectrograms_to_images(normalized)
         del normalized
         self.assertIsInstance(images, np.ndarray)
-        self.assertEqual((MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1], 3), images.shape)
+        self.assertEqual((1, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1], 3), images.shape)
         self.assertAlmostEqual(images[0, :, :, 0].min(), 0.0, places=5)
         self.assertAlmostEqual(images[0, :, :, 0].max(), 255.0, places=5)
         self.assertAlmostEqual(images[0, :, :, 1].min(), 0.0, places=5)
@@ -742,7 +745,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertEqual(y_pred, self.another_cls.predict(data_for_testing[0]))
 
     def test_strip_sound_positive01(self):
-        sound = np.concatenate(np.random.uniform(1e-3, 1.0, (100,)), np.random.uniform(-1.0, -1e-3, (100,)))
+        sound = np.concatenate((np.random.uniform(1e-3, 1.0, (100,)), np.random.uniform(-1.0, -1e-3, (100,))))
         np.random.shuffle(sound)
         sound = np.concatenate((sound, np.zeros((50,), dtype=sound.dtype)))
         true_length = 200
@@ -754,9 +757,9 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertEqual(MobilenetRecognizer.strip_sound(sound), true_length)
 
     def test_strip_sound_positive03(self):
-        sound = np.concatenate(np.random.uniform(1e-3, 1.0, (100,)), np.random.uniform(-1.0, -1e-3, (100,)))
+        sound = np.concatenate((np.random.uniform(1e-3, 1.0, (100,)), np.random.uniform(-1.0, -1e-3, (100,))))
         np.random.shuffle(sound)
-        another_sound = np.concatenate(np.random.uniform(1e-3, 1.0, (10,)), np.random.uniform(-1.0, -1e-3, (10,)))
+        another_sound = np.concatenate((np.random.uniform(1e-3, 1.0, (10,)), np.random.uniform(-1.0, -1e-3, (10,))))
         np.random.shuffle(another_sound)
         sound = np.concatenate((sound, np.zeros((50,), dtype=sound.dtype), another_sound,
                                 np.zeros((15,), dtype=sound.dtype)))
