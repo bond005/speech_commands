@@ -180,7 +180,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         )
         if (X_val is None) or (y_val is None):
             self.set_trainability_of_model(self.recognizer_, False)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -190,7 +190,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
                                            verbose=2 if self.verbose else 0)
             self.set_trainability_of_model(self.recognizer_, True)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -236,7 +236,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 monitor='val_loss', mode='min'
             )
             self.set_trainability_of_model(self.recognizer_, False)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -247,7 +247,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
                                            callbacks=[early_stopping_callback])
             self.set_trainability_of_model(self.recognizer_, True)
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-4), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -317,7 +317,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             print('Best threshold for probability is {0:.2f}.'.format(self.threshold_))
         return self
 
-    def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
+    def predict(self, X: Union[np.ndarray, List[np.ndarray]]) -> Union[np.ndarray, list]:
         probabilities = self.predict_proba(X)
         indices_of_classes = probabilities.argmax(axis=1)
         max_probabilities = probabilities.max(axis=1)
@@ -590,8 +590,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 normalized = normalized[0:MobilenetRecognizer.IMAGESIZE[0]]
         else:
             normalized = np.zeros(shape=(MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
-                                  dtype=np.float32)
-        return np.asarray(normalized, dtype=np.float32)
+                                  dtype=np.float64)
+        return normalized
 
     @staticmethod
     def spectrograms_to_images(normalized_spectrograms: np.ndarray) -> np.ndarray:
