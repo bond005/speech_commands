@@ -882,7 +882,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         batch_size = batch_end - batch_start
         normalized_spectrograms = np.empty(
             (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2),
-            dtype=np.float32
+            dtype=np.float64
         )
         targets = np.zeros(shape=(batch_size, len(self.classes)), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
@@ -999,7 +999,7 @@ class DatasetGenerator(keras.utils.Sequence):
         batch_size = batch_end - batch_start
         normalized_spectrograms = np.empty(
             (batch_size, MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2,),
-            dtype=np.float32
+            dtype=np.float64
         )
         for sample_idx in range(batch_start, batch_end):
             spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
