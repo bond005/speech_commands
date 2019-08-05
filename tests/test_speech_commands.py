@@ -515,6 +515,36 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertAlmostEqual(images[0, :, :, 2].min(), 0.0, places=5)
         self.assertAlmostEqual(images[0, :, :, 2].max(), 255.0, places=5)
 
+    def test_class_label_to_vector_positive01(self):
+        classes_dict = {'a': 0, 'b': 1, 'c': 2}
+        class_label = 'b'
+        true_vector = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+        calc_vector = MobilenetRecognizer.class_label_to_vector(class_label, classes_dict)
+        self.assertIsInstance(calc_vector, np.ndarray)
+        self.assertEqual(true_vector.shape, calc_vector.shape)
+        for sample_idx in range(true_vector.shape[0]):
+            self.assertAlmostEqual(true_vector[sample_idx], calc_vector[sample_idx], places=5)
+
+    def test_class_label_to_vector_positive02(self):
+        classes_dict = {'a': 0, 'b': 1, 'c': 2}
+        class_label = 'e'
+        true_vector = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        calc_vector = MobilenetRecognizer.class_label_to_vector(class_label, classes_dict)
+        self.assertIsInstance(calc_vector, np.ndarray)
+        self.assertEqual(true_vector.shape, calc_vector.shape)
+        for sample_idx in range(true_vector.shape[0]):
+            self.assertAlmostEqual(true_vector[sample_idx], calc_vector[sample_idx], places=5)
+
+    def test_class_label_to_vector_positive03(self):
+        classes_dict = {'a': 0, 'b': 1, 'c': 2}
+        class_label = -1
+        true_vector = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+        calc_vector = MobilenetRecognizer.class_label_to_vector(class_label, classes_dict)
+        self.assertIsInstance(calc_vector, np.ndarray)
+        self.assertEqual(true_vector.shape, calc_vector.shape)
+        for sample_idx in range(true_vector.shape[0]):
+            self.assertAlmostEqual(true_vector[sample_idx], calc_vector[sample_idx], places=5)
+
     def test_fit_predict_positive01(self):
         self.cls = MobilenetRecognizer(verbose=True)
         data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data')

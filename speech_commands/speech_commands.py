@@ -839,6 +839,14 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             range(len(y))
         ))
 
+    @staticmethod
+    def class_label_to_vector(class_label, classes_dict) -> np.ndarray:
+        res = np.zeros((len(classes_dict),), dtype=np.float32)
+        class_idx = classes_dict.get(class_label, -1)
+        if class_idx >= 0:
+            res[class_idx] = 1.0
+        return res
+
 
 class TrainsetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray], batch_size: int,
@@ -947,7 +955,9 @@ class TrainsetGenerator(keras.utils.Sequence):
                 normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
                     spectrogram=spectrogram, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
                 )
-            targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
+            targets[sample_idx - batch_start] = MobilenetRecognizer.class_label_to_vector(
+                self.y[self.indices[sample_idx]], self.classes
+            )
         spectrograms_as_images = keras.applications.mobilenet.preprocess_input(
             MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
         )
