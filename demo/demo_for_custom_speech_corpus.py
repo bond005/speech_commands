@@ -1,87 +1,18 @@
 from argparse import ArgumentParser
-import codecs
-import csv
 import os
 import pickle
 import sys
-from typing import List, Tuple, Union
 
-import librosa
-import numpy as np
 from sklearn.metrics import classification_report
 
 
 try:
     from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
+    from speech_commands.utils import read_custom_data, parse_layers
 except:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
-
-
-def read_data_for_training(annotation_file_name: str,
-                           sound_base_dir: Union[str, None]=None) -> Tuple[List[np.ndarray], List[str], int]:
-    if not os.path.isfile(os.path.normpath(annotation_file_name)):
-        raise ValueError('The file `{0}` does not exist!'.format(annotation_file_name))
-    if sound_base_dir is None:
-        sound_base_dir_ = os.path.dirname(os.path.normpath(annotation_file_name))
-    else:
-        sound_base_dir_ = os.path.normpath(sound_base_dir)
-    if not os.path.isdir(sound_base_dir_):
-        raise ValueError('The directory `{0}` does not exist!'.format(sound_base_dir_))
-    with codecs.open(os.path.normpath(annotation_file_name), mode='r', encoding='utf-8', errors='ignore') as fp:
-        reader = csv.reader(fp, quotechar='"', delimiter=',')
-        rows = list(filter(lambda it: len(it) > 0, reader))
-    if len(rows) < 3:
-        raise ValueError('The file `{0}` is empty!'.format(annotation_file_name))
-    if rows[0] != ['sound_name', 'class_name']:
-        raise ValueError('The CSV file `{0}` is wrong! Its header does not correspond to target one!'.format(
-            annotation_file_name))
-    sounds = []
-    classes_of_sounds = []
-    sampling_frequency = None
-    for cur in rows[1:]:
-        sound_name = os.path.join(sound_base_dir_, os.path.normpath(cur[0].strip()))
-        if not os.path.isfile(sound_name):
-            raise ValueError('The file `{0}` does not exist!'.format(sound_name))
-        class_name = cur[1].strip().upper()
-        if len(class_name) > 0:
-            try:
-                _ = int(class_name)
-                ok = False
-            except:
-                try:
-                    _ = float(class_name)
-                    ok = False
-                except:
-                    ok = class_name.isalnum()
-        else:
-            ok = True
-        if not ok:
-            raise ValueError('`{0}` is wrong name for sound class!'.format(class_name))
-        new_sound, new_sampling_frequency = librosa.core.load(path=sound_name, sr=None, mono=True)
-        if sampling_frequency is None:
-            sampling_frequency = new_sampling_frequency
-        elif sampling_frequency != new_sampling_frequency:
-            raise ValueError('Sampling frequency of the sound `{0}` is {1}, but target sampling frequency '
-                             'is {2}!'.format(sound_name, new_sampling_frequency, sampling_frequency))
-        sounds.append(new_sound)
-        classes_of_sounds.append(class_name if len(class_name) > 0 else -1)
-    return sounds, classes_of_sounds, sampling_frequency
-
-
-def parse_layers(src: Union[str, None]) -> tuple:
-    if src is None:
-        return tuple()
-    prep = src.strip()
-    if len(prep) == 0:
-        return tuple()
-    return tuple(map(
-        lambda it3: int(it3),
-        filter(
-            lambda it2: len(it2) > 0,
-            map(lambda it1: it1.strip(), prep.split('-'))
-        )
-    ))
+    from speech_commands.utils import read_custom_data, parse_layers
 
 
 def main():
@@ -112,16 +43,16 @@ def main():
     if model_kind not in {'ann', 'dtw'}:
         raise ValueError('{0} is unknown kind of model!'.format(cmd_args.kind_of_model))
 
-    sounds_for_training, labels_for_training, sampling_frequency = read_data_for_training(
+    sounds_for_training, labels_for_training, sampling_frequency = read_custom_data(
         train_data_name, os.path.dirname(train_data_name)
     )
-    sounds_for_testing, labels_for_testing, sampling_frequency_ = read_data_for_training(
+    sounds_for_testing, labels_for_testing, sampling_frequency_ = read_custom_data(
         test_data_name, os.path.dirname(test_data_name)
     )
     if sampling_frequency != sampling_frequency_:
         raise ValueError('Sampling frequency for train sounds does not equal to sampling frequency for test sounds! '
                          '{0} != {1}'.format(sampling_frequency, sampling_frequency_))
-    sounds_for_validation, labels_for_validation, sampling_frequency_ = read_data_for_training(
+    sounds_for_validation, labels_for_validation, sampling_frequency_ = read_custom_data(
         validation_data_name, os.path.dirname(validation_data_name)
     )
     if sampling_frequency != sampling_frequency_:
