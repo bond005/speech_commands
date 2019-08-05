@@ -180,6 +180,10 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         )
         if (X_val is None) or (y_val is None):
             self.set_trainability_of_model(self.recognizer_, False)
+            if self.warm_start:
+                for cur_layer in self.recognizer_.layers:
+                    if cur_layer.name.lower().startswith('hiddenlayer'):
+                        cur_layer.trainable = False
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
@@ -190,6 +194,10 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
                                            verbose=2 if self.verbose else 0)
             self.set_trainability_of_model(self.recognizer_, True)
+            if self.warm_start:
+                for cur_layer in self.recognizer_.layers:
+                    if cur_layer.name.lower().startswith('hiddenlayer'):
+                        cur_layer.trainable = True
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
@@ -236,6 +244,10 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 monitor='val_loss', mode='min'
             )
             self.set_trainability_of_model(self.recognizer_, False)
+            if self.warm_start:
+                for cur_layer in self.recognizer_.layers:
+                    if cur_layer.name.lower().startswith('hiddenlayer'):
+                        cur_layer.trainable = False
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
@@ -247,6 +259,10 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
                                            callbacks=[early_stopping_callback])
             self.set_trainability_of_model(self.recognizer_, True)
+            if self.warm_start:
+                for cur_layer in self.recognizer_.layers:
+                    if cur_layer.name.lower().startswith('hiddenlayer'):
+                        cur_layer.trainable = True
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
