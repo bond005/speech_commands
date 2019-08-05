@@ -141,7 +141,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 neural_network = mobilenet.get_layer('conv_pw_{0}'.format(layer_index))(neural_network)
                 neural_network = mobilenet.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
                 neural_network = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
-            neural_network = keras.layers.GlobalMaxPooling2D(name='PoolingLayer')(neural_network)
+            neural_network = keras.layers.GlobalAveragePooling2D(name='PoolingLayer')(neural_network)
             if len(self.hidden_layers) > 0:
                 hidden_layer = keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network)
                 hidden_layer = keras.layers.Dense(
