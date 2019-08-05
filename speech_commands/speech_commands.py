@@ -1207,7 +1207,7 @@ class DTWRecognizer(ClassifierMixin, BaseEstimator):
         if hasattr(self, 'melfb_'):
             del self.melfb_
         self.melfb_ = librosa.filters.mel(sr=self.sampling_frequency, n_fft=n_fft, n_mels=self.N_MELS,
-                                          fmin=350.0, fmax=6000.0)
+                                          fmin=350.0, fmax=6000.0, dtype=np.float64)
 
     @staticmethod
     def check_params(**kwargs):
