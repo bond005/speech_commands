@@ -578,8 +578,13 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertEqual(set(res.classes_.keys()), true_set_of_classes)
         self.assertEqual(len(res.classes_), len(res.classes_reverse_))
         self.assertEqual(len(res.classes_), len(true_set_of_classes))
+        class_indices = []
         for class_name in true_set_of_classes:
             self.assertEqual(res.classes_reverse_[res.classes_[class_name]], class_name)
+            class_indices.append(res.classes_[class_name])
+        self.assertEqual(np.min(class_indices), 0)
+        self.assertEqual(np.max(class_indices), len(true_set_of_classes) - 1)
+        self.assertEqual(len(class_indices), len(set(class_indices)))
         probabilities = res.predict_proba(data_for_testing[0])
         self.assertIsInstance(probabilities, np.ndarray)
         self.assertEqual(2, len(probabilities.shape))
