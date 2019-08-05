@@ -176,5 +176,35 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(new_sampling_frequency, fs)
             self.assertEqual(new_sound.tolist(), data_for_testing[0][sample_idx].tolist())
 
+    def test_read_custom_data(self):
+        data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'custom_data')
+        true_classes = ['NO', 'NO', 'NO', 'NO', 'NO', 'YES', 'NO', 'NO', 'YES', 'YES', -1, 'YES', 'YES', -1, -1, -1, -1]
+        true_names = ['sounds/no_01.wav', 'sounds/no_03.wav', 'sounds/no_02.wav', 'sounds/no_05.wav',
+                      'sounds/no_04.wav', 'sounds/yes_02.wav', 'sounds/no_06.wav', 'sounds/no_07.wav',
+                      'sounds/yes_01.wav', 'sounds/yes_03.wav', 'sounds/unknown_01.wav', 'sounds/yes_05.wav',
+                      'sounds/yes_04.wav', 'sounds/unknown_02.wav', 'sounds/unknown_03.wav', 'sounds/unknown_04.wav',
+                      'sounds/unknown_05.wav']
+        true_fs = 16000
+        sounds, classes, names, fs = read_custom_data(os.path.join(data_dir, 'data_for_training.csv'), data_dir)
+        self.assertIsInstance(sounds, list)
+        self.assertIsInstance(classes, list)
+        self.assertIsInstance(names, list)
+        self.assertIsInstance(fs, int)
+        self.assertEqual(true_fs, fs)
+        self.assertEqual(len(sounds), len(classes))
+        self.assertEqual(len(sounds), len(names))
+        self.assertEqual(true_classes, classes)
+        self.assertEqual(true_names, names)
+        for sample_idx in range(len(sounds)):
+            self.assertIsInstance(sounds[sample_idx], np.ndarray)
+            self.assertEqual(1, len(sounds[sample_idx].shape))
+            new_sound, new_sampling_frequency = librosa.core.load(
+                path=os.path.join(data_dir, names[sample_idx]),
+                sr=None, mono=True
+            )
+            self.assertEqual(new_sampling_frequency, fs)
+            self.assertEqual(new_sound.tolist(), sounds[sample_idx].tolist())
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

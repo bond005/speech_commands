@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 
+import keras
 import numpy as np
 from sklearn.exceptions import NotFittedError
 from sklearn.metrics import f1_score
@@ -14,9 +15,11 @@ from sklearn.metrics import f1_score
 
 try:
     from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
+    from speech_commands.utils import read_tensorflow_speech_recognition_challenge
 except:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     from speech_commands.speech_commands import MobilenetRecognizer, DTWRecognizer
+    from speech_commands.utils import read_tensorflow_speech_recognition_challenge
 
 
 class TestMobilenetRecognizer(unittest.TestCase):
@@ -442,6 +445,246 @@ class TestMobilenetRecognizer(unittest.TestCase):
                 [np.random.uniform(-1.0, 1.0, (n,)) for n in np.random.randint(300, 5000, (10,))], 'X_train',
                 ['sound' for _ in range(5)] + ['silence' for _ in range(3)] + [-2 for _ in range(2)], 'y_train'
             )
+
+    def test_select_labeled_samples(self):
+        y = [
+            -1, -1, '-1', -1, -1, 'down', 'down', 'down', 'eight', 'eight', 'five', 'four', 'four', 'go', 'go', -1, -1,
+            'left', 'left', 'left', -1, -1, 'nine', 'nine', 'no', 'no', 'off', 'on', 'on', 'on', 'on', 'one', 'one',
+            'one', 'one', 'one', 'right', 'right', 'seven', 'seven', -1, 'six', 'stop', 'stop', 'three', '-1', 'two',
+            'two', 'up', 'up', 'up', -1, 'yes', 'yes', 'yes', 'zero', 'zero'
+        ]
+        true_indices = (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+                        34, 35, 36, 37, 38, 39, 41, 42, 43, 44, 46, 47, 48, 49, 50, 52, 53, 54, 55, 56)
+        self.assertEqual(true_indices, MobilenetRecognizer.select_labeled_samples(y))
+
+    def test_fit_predict_positive01(self):
+        self.cls = MobilenetRecognizer(verbose=True)
+        data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data')
+        data_for_training, data_for_validation, data_for_testing, background_sounds, fs = \
+            read_tensorflow_speech_recognition_challenge(data_dir)
+        res = self.cls.fit(X=data_for_training[0], y=data_for_training[1],
+                           validation_data=(data_for_validation[0], data_for_validation[1]),
+                           background=background_sounds[0])
+        true_set_of_classes = {'down', 'eight', 'five', 'four', 'go', 'left', 'nine', 'no', 'off', 'on', 'one', 'right',
+                               'seven', 'six', 'stop', 'three', 'two', 'up', 'yes', 'zero'}
+        self.assertIsInstance(res, MobilenetRecognizer)
+        self.assertTrue(hasattr(res, 'melfb_'))
+        self.assertTrue(hasattr(res, 'recognizer_'))
+        self.assertTrue(hasattr(res, 'classes_'))
+        self.assertTrue(hasattr(res, 'classes_reverse_'))
+        self.assertTrue(hasattr(res, 'threshold_'))
+        self.assertTrue(hasattr(res, 'min_amplitude_'))
+        self.assertTrue(hasattr(res, 'max_amplitude_'))
+        self.assertIsInstance(res.melfb_, np.ndarray)
+        self.assertEqual(len(res.melfb_.shape), 2)
+        self.assertIsInstance(res.recognizer_, keras.models.Model)
+        self.assertIsInstance(res.classes_, dict)
+        self.assertIsInstance(res.classes_reverse_, list)
+        self.assertIsInstance(res.threshold_, float)
+        self.assertIsInstance(res.min_amplitude_, float)
+        self.assertIsInstance(res.max_amplitude_, float)
+        self.assertGreaterEqual(res.min_amplitude_, 0.0)
+        self.assertLess(res.min_amplitude_, res.max_amplitude_)
+        self.assertGreater(res.threshold_, 0.0)
+        self.assertLess(res.threshold_, 1.0)
+        self.assertEqual(set(res.classes_.keys()), true_set_of_classes)
+        self.assertEqual(len(res.classes_), len(res.classes_reverse_))
+        self.assertEqual(len(res.classes_), len(true_set_of_classes))
+        for class_name in true_set_of_classes:
+            self.assertEqual(res.classes_reverse_[res.classes_[class_name]], class_name)
+        probabilities = res.predict_proba(data_for_testing[0])
+        self.assertIsInstance(probabilities, np.ndarray)
+        self.assertEqual(2, len(probabilities.shape))
+        self.assertEqual(probabilities.shape[0], len(data_for_testing[0]))
+        self.assertEqual(probabilities.shape[1], len(true_set_of_classes))
+        y_pred = res.predict(data_for_testing[0])
+        self.assertIsInstance(y_pred, list)
+        for sample_idx in range(len(y_pred)):
+            if probabilities[sample_idx].max() >= res.threshold_:
+                self.assertEqual(y_pred[sample_idx], res.classes_reverse_[probabilities[sample_idx].argmax()])
+            else:
+                self.assertEqual(y_pred[sample_idx], -1)
+        score = res.score(data_for_testing[0], data_for_testing[1])
+        self.assertIsInstance(score, float)
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 1.0)
+        self.assertAlmostEqual(score, f1_score(data_for_testing[1], y_pred, average='macro'), places=4)
+
+    def test_fit_predict_positive02(self):
+        self.cls = MobilenetRecognizer(verbose=True)
+        data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data')
+        data_for_training, data_for_validation, data_for_testing, background_sounds, fs = \
+            read_tensorflow_speech_recognition_challenge(data_dir)
+        res = self.cls.fit(X=data_for_training[0], y=data_for_training[1],
+                           validation_data=(data_for_validation[0], data_for_validation[1]),
+                           background=background_sounds[0])
+        res.warm_start = True
+        res.fit(X=data_for_validation[0], y=data_for_validation[1],
+                validation_data=(data_for_testing[0], data_for_testing[1]))
+        true_set_of_classes = {'down', 'eight', 'five', 'four', 'go', 'left', 'nine', 'no', 'off', 'on', 'one', 'right',
+                               'seven', 'six', 'stop', 'three', 'two', 'up', 'yes', 'zero'}
+        self.assertIsInstance(res, MobilenetRecognizer)
+        self.assertTrue(hasattr(res, 'melfb_'))
+        self.assertTrue(hasattr(res, 'recognizer_'))
+        self.assertTrue(hasattr(res, 'classes_'))
+        self.assertTrue(hasattr(res, 'classes_reverse_'))
+        self.assertTrue(hasattr(res, 'threshold_'))
+        self.assertTrue(hasattr(res, 'min_amplitude_'))
+        self.assertTrue(hasattr(res, 'max_amplitude_'))
+        self.assertIsInstance(res.melfb_, np.ndarray)
+        self.assertEqual(len(res.melfb_.shape), 2)
+        self.assertIsInstance(res.recognizer_, keras.models.Model)
+        self.assertIsInstance(res.classes_, dict)
+        self.assertIsInstance(res.classes_reverse_, list)
+        self.assertIsInstance(res.threshold_, float)
+        self.assertIsInstance(res.min_amplitude_, float)
+        self.assertIsInstance(res.max_amplitude_, float)
+        self.assertGreaterEqual(res.min_amplitude_, 0.0)
+        self.assertLess(res.min_amplitude_, res.max_amplitude_)
+        self.assertGreater(res.threshold_, 0.0)
+        self.assertLess(res.threshold_, 1.0)
+        self.assertEqual(set(res.classes_.keys()), true_set_of_classes)
+        self.assertEqual(len(res.classes_), len(res.classes_reverse_))
+        self.assertEqual(len(res.classes_), len(true_set_of_classes))
+        for class_name in true_set_of_classes:
+            self.assertEqual(res.classes_reverse_[res.classes_[class_name]], class_name)
+        probabilities = res.predict_proba(data_for_testing[0])
+        self.assertIsInstance(probabilities, np.ndarray)
+        self.assertEqual(2, len(probabilities.shape))
+        self.assertEqual(probabilities.shape[0], len(data_for_testing[0]))
+        self.assertEqual(probabilities.shape[1], len(true_set_of_classes))
+        y_pred = res.predict(data_for_testing[0])
+        self.assertIsInstance(y_pred, list)
+        for sample_idx in range(len(y_pred)):
+            if probabilities[sample_idx].max() >= res.threshold_:
+                self.assertEqual(y_pred[sample_idx], res.classes_reverse_[probabilities[sample_idx].argmax()])
+            else:
+                self.assertEqual(y_pred[sample_idx], -1)
+        score = res.score(data_for_testing[0], data_for_testing[1])
+        self.assertIsInstance(score, float)
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 1.0)
+        self.assertAlmostEqual(score, f1_score(data_for_testing[1], y_pred, average='macro'), places=4)
+
+    def test_fit_negative01(self):
+        self.cls = MobilenetRecognizer(verbose=True, warm_start=True)
+        data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data')
+        data_for_training, data_for_validation, data_for_testing, background_sounds, fs = \
+            read_tensorflow_speech_recognition_challenge(data_dir)
+        with self.assertRaises(NotFittedError):
+            _ = self.cls.fit(X=data_for_training[0], y=data_for_training[1],
+                             validation_data=(data_for_validation[0], data_for_validation[1]),
+                             background=background_sounds[0])
+
+    def test_predict_negative01(self):
+        self.cls = MobilenetRecognizer(verbose=True)
+        data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data')
+        data_for_training, data_for_validation, data_for_testing, background_sounds, fs = \
+            read_tensorflow_speech_recognition_challenge(data_dir)
+        with self.assertRaises(NotFittedError):
+            _ = self.cls.predict(data_for_testing[0])
+
+    def test_serialize_positive01(self):
+        self.cls = MobilenetRecognizer(verbose=True, warm_start=True)
+        self.temp_file_name = tempfile.NamedTemporaryFile(mode='w', suffix='sound_recognizer.pkl').name
+        with open(self.temp_file_name, 'wb') as fp:
+            pickle.dump(self.cls, fp)
+        with open(self.temp_file_name, 'rb') as fp:
+            self.another_cls = pickle.load(fp)
+        self.assertIsInstance(self.another_cls, MobilenetRecognizer)
+        self.assertTrue(hasattr(self.another_cls, 'batch_size'))
+        self.assertTrue(hasattr(self.another_cls, 'max_epochs'))
+        self.assertTrue(hasattr(self.another_cls, 'patience'))
+        self.assertTrue(hasattr(self.another_cls, 'verbose'))
+        self.assertTrue(hasattr(self.another_cls, 'warm_start'))
+        self.assertTrue(hasattr(self.another_cls, 'window_size'))
+        self.assertTrue(hasattr(self.another_cls, 'shift_size'))
+        self.assertTrue(hasattr(self.another_cls, 'sampling_frequency'))
+        self.assertTrue(hasattr(self.another_cls, 'hidden_layers'))
+        self.assertTrue(hasattr(self.another_cls, 'layer_level'))
+        self.assertIsInstance(self.another_cls.batch_size, int)
+        self.assertIsInstance(self.another_cls.max_epochs, int)
+        self.assertIsInstance(self.another_cls.patience, int)
+        self.assertIsInstance(self.another_cls.verbose, bool)
+        self.assertIsInstance(self.another_cls.warm_start, bool)
+        self.assertIsInstance(self.another_cls.sampling_frequency, int)
+        self.assertIsInstance(self.another_cls.window_size, float)
+        self.assertIsInstance(self.another_cls.shift_size, float)
+        self.assertIsInstance(self.another_cls.hidden_layers, tuple)
+        self.assertIsInstance(self.another_cls.layer_level, int)
+        self.assertIsNone(self.another_cls.random_seed)
+        self.assertEqual(self.cls.batch_size, self.another_cls.batch_size)
+        self.assertEqual(self.cls.max_epochs, self.another_cls.max_epochs)
+        self.assertEqual(self.cls.patience, self.another_cls.patience)
+        self.assertAlmostEqual(self.cls.window_size, self.another_cls.window_size)
+        self.assertAlmostEqual(self.cls.shift_size, self.another_cls.shift_size)
+        self.assertEqual(self.cls.sampling_frequency, self.another_cls.sampling_frequency)
+        self.assertEqual(self.cls.hidden_layers, self.another_cls.hidden_layers)
+        self.assertEqual(self.cls.layer_level, self.another_cls.layer_level)
+        self.assertTrue(self.another_cls.warm_start)
+        self.assertTrue(self.another_cls.verbose)
+
+    def test_serialize_positive02(self):
+        true_set_of_classes = {'down', 'eight', 'five', 'four', 'go', 'left', 'nine', 'no', 'off', 'on', 'one', 'right',
+                               'seven', 'six', 'stop', 'three', 'two', 'up', 'yes', 'zero'}
+        self.cls = MobilenetRecognizer(verbose=True)
+        data_dir = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data')
+        data_for_training, data_for_validation, data_for_testing, background_sounds, fs = \
+            read_tensorflow_speech_recognition_challenge(data_dir)
+        self.cls.fit(X=data_for_training[0], y=data_for_training[1],
+                     validation_data=(data_for_validation[0], data_for_validation[1]),
+                     background=background_sounds[0])
+        y_pred = self.cls.predict(data_for_testing[0])
+        self.temp_file_name = tempfile.NamedTemporaryFile(mode='w', suffix='sound_recognizer.pkl').name
+        with open(self.temp_file_name, 'wb') as fp:
+            pickle.dump(self.cls, fp)
+        del self.cls
+        with open(self.temp_file_name, 'rb') as fp:
+            self.another_cls = pickle.load(fp)
+        self.assertIsInstance(self.another_cls, MobilenetRecognizer)
+        self.assertTrue(hasattr(self.another_cls, 'batch_size'))
+        self.assertTrue(hasattr(self.another_cls, 'max_epochs'))
+        self.assertTrue(hasattr(self.another_cls, 'patience'))
+        self.assertTrue(hasattr(self.another_cls, 'verbose'))
+        self.assertTrue(hasattr(self.another_cls, 'warm_start'))
+        self.assertTrue(hasattr(self.another_cls, 'window_size'))
+        self.assertTrue(hasattr(self.another_cls, 'shift_size'))
+        self.assertTrue(hasattr(self.another_cls, 'sampling_frequency'))
+        self.assertTrue(hasattr(self.another_cls, 'hidden_layers'))
+        self.assertTrue(hasattr(self.another_cls, 'layer_level'))
+        self.assertIsInstance(self.another_cls.batch_size, int)
+        self.assertIsInstance(self.another_cls.max_epochs, int)
+        self.assertIsInstance(self.another_cls.patience, int)
+        self.assertIsInstance(self.another_cls.verbose, bool)
+        self.assertIsInstance(self.another_cls.warm_start, bool)
+        self.assertIsInstance(self.another_cls.sampling_frequency, int)
+        self.assertIsInstance(self.another_cls.window_size, float)
+        self.assertIsInstance(self.another_cls.shift_size, float)
+        self.assertIsInstance(self.another_cls.hidden_layers, tuple)
+        self.assertIsInstance(self.another_cls.layer_level, int)
+        self.assertIsNotNone(self.another_cls.random_seed)
+        self.assertTrue(hasattr(self.another_cls, 'recognizer_'))
+        self.assertTrue(hasattr(self.another_cls, 'classes_'))
+        self.assertTrue(hasattr(self.another_cls, 'classes_reverse_'))
+        self.assertTrue(hasattr(self.another_cls, 'threshold_'))
+        self.assertTrue(hasattr(self.another_cls, 'min_amplitude_'))
+        self.assertTrue(hasattr(self.another_cls, 'max_amplitude_'))
+        self.assertIsInstance(self.another_cls.recognizer_, keras.models.Model)
+        self.assertIsInstance(self.another_cls.classes_, dict)
+        self.assertIsInstance(self.another_cls.classes_reverse_, list)
+        self.assertIsInstance(self.another_cls.threshold_, float)
+        self.assertIsInstance(self.another_cls.min_amplitude_, float)
+        self.assertIsInstance(self.another_cls.max_amplitude_, float)
+        self.assertGreaterEqual(self.another_cls.min_amplitude_, 0.0)
+        self.assertLess(self.another_cls.min_amplitude_, self.another_cls.max_amplitude_)
+        self.assertGreater(self.another_cls.threshold_, 0.0)
+        self.assertLess(self.another_cls.threshold_, 1.0)
+        self.assertEqual(set(self.another_cls.classes_.keys()), true_set_of_classes)
+        self.assertEqual(len(self.another_cls.classes_), len(self.another_cls.classes_reverse_))
+        self.assertEqual(len(self.another_cls.classes_), len(true_set_of_classes))
+        for class_name in true_set_of_classes:
+            self.assertEqual(self.another_cls.classes_reverse_[self.another_cls.classes_[class_name]], class_name)
+        self.assertEqual(y_pred, self.another_cls.predict(data_for_testing[0]))
 
 
 class TestDTWRecognizer(unittest.TestCase):

@@ -43,16 +43,16 @@ def main():
     if model_kind not in {'ann', 'dtw'}:
         raise ValueError('{0} is unknown kind of model!'.format(cmd_args.kind_of_model))
 
-    sounds_for_training, labels_for_training, sampling_frequency = read_custom_data(
+    sounds_for_training, labels_for_training, _, sampling_frequency = read_custom_data(
         train_data_name, os.path.dirname(train_data_name)
     )
-    sounds_for_testing, labels_for_testing, sampling_frequency_ = read_custom_data(
+    sounds_for_testing, labels_for_testing, _, sampling_frequency_ = read_custom_data(
         test_data_name, os.path.dirname(test_data_name)
     )
     if sampling_frequency != sampling_frequency_:
         raise ValueError('Sampling frequency for train sounds does not equal to sampling frequency for test sounds! '
                          '{0} != {1}'.format(sampling_frequency, sampling_frequency_))
-    sounds_for_validation, labels_for_validation, sampling_frequency_ = read_custom_data(
+    sounds_for_validation, labels_for_validation, _, sampling_frequency_ = read_custom_data(
         validation_data_name, os.path.dirname(validation_data_name)
     )
     if sampling_frequency != sampling_frequency_:

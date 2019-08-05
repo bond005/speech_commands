@@ -327,7 +327,9 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 res.append(-1)
             else:
                 res.append(self.classes_reverse_[indices_of_classes[idx]])
-        return np.array(res, dtype=object)
+        if isinstance(res, np.ndarray):
+            return np.array(res, dtype=object)
+        return res
 
     def predict_proba(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
@@ -354,8 +356,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
     def fit_predict(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray],
                     sample_weight: Union[list, tuple, np.ndarray, None]=None, **kwargs):
+        if ('validation_data' in kwargs) and ('background' in kwargs):
+            return self.fit(X, y, sample_weight=sample_weight, validation_data=kwargs['validation_data'],
+                            background=kwargs['background']).predict(X)
         if 'validation_data' in kwargs:
             return self.fit(X, y, sample_weight=sample_weight, validation_data=kwargs['validation_data']).predict(X)
+        if 'background' in kwargs:
+            return self.fit(X, y, sample_weight=sample_weight, background=kwargs['background']).predict(X)
         return self.fit(X, y, sample_weight=sample_weight).predict(X)
 
     def finalize_model(self):
@@ -827,6 +834,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             del y_pred
         return best_threshold
 
+    @staticmethod
+    def select_labeled_samples(y: Union[list, tuple, np.ndarray]) -> tuple:
+        return tuple(filter(
+            lambda it: ((y[it] != '-1') if (hasattr(y[it], 'split') and hasattr(y[it], 'strip')) else (y[it] != -1)),
+            range(len(y))
+        ))
+
 
 class TrainsetGenerator(keras.utils.Sequence):
     def __init__(self, X: Union[list, tuple, np.ndarray], y: Union[list, tuple, np.ndarray], batch_size: int,
@@ -845,7 +859,7 @@ class TrainsetGenerator(keras.utils.Sequence):
         self.classes = classes
         self.min_amplitude = min_amplitude
         self.max_amplitude = max_amplitude
-        self.indices = list(filter(lambda it: y[it] != -1, range(len(y))))
+        self.indices = MobilenetRecognizer.select_labeled_samples(y)
         self.use_augmentation = use_augmentation
         self.background_sounds = background_sounds
         assert len(self.indices) > 2

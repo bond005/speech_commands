@@ -8,7 +8,7 @@ import numpy as np
 
 
 def read_custom_data(annotation_file_name: str,
-                     sound_base_dir: Union[str, None]=None) -> Tuple[List[np.ndarray], List[str], int]:
+                     sound_base_dir: Union[str, None]=None) -> Tuple[List[np.ndarray], List[str], List[str], int]:
     if not os.path.isfile(os.path.normpath(annotation_file_name)):
         raise ValueError('The file `{0}` does not exist!'.format(annotation_file_name))
     if sound_base_dir is None:
@@ -27,6 +27,7 @@ def read_custom_data(annotation_file_name: str,
             annotation_file_name))
     sounds = []
     classes_of_sounds = []
+    names_of_sounds = []
     sampling_frequency = None
     for cur in rows[1:]:
         sound_name = os.path.join(sound_base_dir_, os.path.normpath(cur[0].strip()))
@@ -55,7 +56,8 @@ def read_custom_data(annotation_file_name: str,
                              'is {2}!'.format(sound_name, new_sampling_frequency, sampling_frequency))
         sounds.append(new_sound)
         classes_of_sounds.append(class_name if len(class_name) > 0 else -1)
-    return sounds, classes_of_sounds, sampling_frequency
+        names_of_sounds.append(cur[0].strip())
+    return sounds, classes_of_sounds, names_of_sounds, sampling_frequency
 
 
 def read_tensorflow_speech_recognition_challenge(dir_name: str) -> Tuple[
