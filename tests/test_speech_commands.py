@@ -686,6 +686,28 @@ class TestMobilenetRecognizer(unittest.TestCase):
             self.assertEqual(self.another_cls.classes_reverse_[self.another_cls.classes_[class_name]], class_name)
         self.assertEqual(y_pred, self.another_cls.predict(data_for_testing[0]))
 
+    def test_strip_sound_positive01(self):
+        sound = np.concatenate(np.random.uniform(1e-3, 1.0, (100,)), np.random.uniform(-1.0, -1e-3, (100,)))
+        np.random.shuffle(sound)
+        sound = np.concatenate((sound, np.zeros((50,), dtype=sound.dtype)))
+        true_length = 200
+        self.assertEqual(MobilenetRecognizer.strip_sound(sound), true_length)
+
+    def test_strip_sound_positive02(self):
+        sound = np.zeros((50,), dtype=np.float32)
+        true_length = 0
+        self.assertEqual(MobilenetRecognizer.strip_sound(sound), true_length)
+
+    def test_strip_sound_positive03(self):
+        sound = np.concatenate(np.random.uniform(1e-3, 1.0, (100,)), np.random.uniform(-1.0, -1e-3, (100,)))
+        np.random.shuffle(sound)
+        another_sound = np.concatenate(np.random.uniform(1e-3, 1.0, (10,)), np.random.uniform(-1.0, -1e-3, (10,)))
+        np.random.shuffle(another_sound)
+        sound = np.concatenate((sound, np.zeros((50,), dtype=sound.dtype), another_sound,
+                                np.zeros((15,), dtype=sound.dtype)))
+        true_length = 270
+        self.assertEqual(MobilenetRecognizer.strip_sound(sound), true_length)
+
 
 class TestDTWRecognizer(unittest.TestCase):
     def tearDown(self):
