@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 import keras
+import librosa
 import numpy as np
 from sklearn.exceptions import NotFittedError
 from sklearn.metrics import f1_score
@@ -456,6 +457,60 @@ class TestMobilenetRecognizer(unittest.TestCase):
         true_indices = (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
                         34, 35, 36, 37, 38, 39, 41, 42, 43, 44, 46, 47, 48, 49, 50, 52, 53, 54, 55, 56)
         self.assertEqual(true_indices, MobilenetRecognizer.select_labeled_samples(y))
+
+    def test_sound_to_melspectrogram(self):
+        sound_name = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data', 'audio',
+                                  '_background_noise_', 'doing_the_dishes.wav')
+        sound, fs = librosa.core.load(path=sound_name, sr=None, mono=True)
+        self.cls = MobilenetRecognizer(hidden_layers=(300, 100), sampling_frequency=fs)
+        self.cls.update_triangle_filters()
+        spectrogram = MobilenetRecognizer.sound_to_melspectrogram(sound, self.cls.window_size, self.cls.shift_size, fs,
+                                                                  self.cls.melfb_)
+        self.assertIsInstance(spectrogram, np.ndarray)
+        self.assertEqual(2, len(spectrogram.shape))
+        self.assertGreater(spectrogram.shape[0], 1)
+        self.assertNotEqual(spectrogram.shape[0], MobilenetRecognizer.IMAGESIZE[0])
+        self.assertEqual(spectrogram.shape[1], MobilenetRecognizer.IMAGESIZE[1] // 2)
+        self.assertGreaterEqual(spectrogram.min(), 0.0)
+        self.assertGreater(spectrogram.max(), spectrogram.min())
+
+    def test_normalize_melspectrogram(self):
+        sound_name = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data', 'audio',
+                                  '_background_noise_', 'doing_the_dishes.wav')
+        sound, fs = librosa.core.load(path=sound_name, sr=None, mono=True)
+        self.cls = MobilenetRecognizer(hidden_layers=(300, 100), sampling_frequency=fs)
+        self.cls.update_triangle_filters()
+        spectrogram = MobilenetRecognizer.sound_to_melspectrogram(sound, self.cls.window_size, self.cls.shift_size, fs,
+                                                                  self.cls.melfb_)
+        normalized = MobilenetRecognizer.normalize_melspectrogram(spectrogram)
+        del spectrogram
+        self.assertIsInstance(normalized, np.ndarray)
+        self.assertEqual(2, len(normalized.shape))
+        self.assertEqual(normalized.shape[0], MobilenetRecognizer.IMAGESIZE[0])
+        self.assertEqual(normalized.shape[1], MobilenetRecognizer.IMAGESIZE[1] // 2)
+        self.assertAlmostEqual(normalized.min(), 0.0, places=5)
+        self.assertAlmostEqual(normalized.max(), 1.0, places=5)
+
+    def test_spectrograms_to_images(self):
+        sound_name = os.path.join(os.path.dirname(__file__), 'testdata', 'tensorflow_data', 'audio',
+                                  '_background_noise_', 'doing_the_dishes.wav')
+        sound, fs = librosa.core.load(path=sound_name, sr=None, mono=True)
+        self.cls = MobilenetRecognizer(hidden_layers=(300, 100), sampling_frequency=fs)
+        self.cls.update_triangle_filters()
+        spectrogram = MobilenetRecognizer.sound_to_melspectrogram(sound, self.cls.window_size, self.cls.shift_size, fs,
+                                                                  self.cls.melfb_)
+        normalized = np.expand_dims(MobilenetRecognizer.normalize_melspectrogram(spectrogram), axis=0)
+        del spectrogram
+        images = MobilenetRecognizer.spectrograms_to_images(normalized)
+        del normalized
+        self.assertIsInstance(images, np.ndarray)
+        self.assertEqual((MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1], 3), images.shape)
+        self.assertAlmostEqual(images[0, :, :, 0].min(), 0.0, places=5)
+        self.assertAlmostEqual(images[0, :, :, 0].max(), 255.0, places=5)
+        self.assertAlmostEqual(images[0, :, :, 1].min(), 0.0, places=5)
+        self.assertAlmostEqual(images[0, :, :, 1].max(), 255.0, places=5)
+        self.assertAlmostEqual(images[0, :, :, 2].min(), 0.0, places=5)
+        self.assertAlmostEqual(images[0, :, :, 2].max(), 255.0, places=5)
 
     def test_fit_predict_positive01(self):
         self.cls = MobilenetRecognizer(verbose=True)

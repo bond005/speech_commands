@@ -604,9 +604,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 MobilenetRecognizer.IMAGESIZE[0], MobilenetRecognizer.IMAGESIZE[1] // 2,
                 normalized_spectrograms.shape[1], normalized_spectrograms.shape[2]
             ))
-        return keras.applications.mobilenet.preprocess_input(
-            MobilenetRecognizer.COLORMAP(np.repeat(normalized_spectrograms, 2, axis=2))[:, :, :, 0:3] * 255.0
-        )
+        return MobilenetRecognizer.COLORMAP(np.repeat(normalized_spectrograms, 2, axis=2))[:, :, :, 0:3] * 255.0
 
     @staticmethod
     def check_params(**kwargs):
@@ -950,7 +948,9 @@ class TrainsetGenerator(keras.utils.Sequence):
                     spectrogram=spectrogram, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
                 )
             targets[sample_idx - batch_start][self.classes[self.y[self.indices[sample_idx]]]] = 1.0
-        spectrograms_as_images = MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
+        spectrograms_as_images = keras.applications.mobilenet.preprocess_input(
+            MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
+        )
         del normalized_spectrograms
         if self.sample_weight is None:
             return spectrograms_as_images, targets
@@ -1000,7 +1000,9 @@ class DatasetGenerator(keras.utils.Sequence):
             normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
                 spectrogram, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
             )
-        return MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
+        return keras.applications.mobilenet.preprocess_input(
+            MobilenetRecognizer.spectrograms_to_images(normalized_spectrograms)
+        )
 
     def get_number_of_samples(self):
         if self.indices is None:
