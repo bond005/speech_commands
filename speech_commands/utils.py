@@ -139,10 +139,10 @@ def read_tensorflow_speech_recognition_challenge(dir_name: str) -> Tuple[
             y_train.append(class_name)
             filenames_for_training.append(cur_sound)
     background_sounds = []
-    names_of_background_sounds = list(filter(
+    names_of_background_sounds = sorted(list(filter(
         lambda it: it.lower().endswith('.wav'),
         os.listdir(os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_'))
-    ))
+    )))
     if len(names_of_background_sounds) == 0:
         raise ValueError('There are no sounds in the `{0}`.'.format(
             os.path.join(os.path.normpath(dir_name), 'audio', '_background_noise_')))
