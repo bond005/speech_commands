@@ -11,7 +11,6 @@ import keras.backend as K
 import librosa
 from matplotlib.pyplot import cm
 import numpy as np
-from scipy.signal import resample
 from sklearn.base import ClassifierMixin, BaseEstimator
 from sklearn.metrics import f1_score
 from sklearn.utils.validation import check_is_fitted
@@ -192,8 +191,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 print('')
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
-                                           verbose=2 if self.verbose else 0, use_multiprocessing=True,
-                                           workers=max(os.cpu_count() - 1, 0))
+                                           verbose=2 if self.verbose else 0)
             self.set_trainability_of_model(self.recognizer_, True)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
@@ -207,8 +205,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 print('')
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
-                                           verbose=2 if self.verbose else 0, use_multiprocessing=True,
-                                           workers=max(os.cpu_count() - 1, 0))
+                                           verbose=2 if self.verbose else 0)
             if self.verbose:
                 print('')
             indices_of_unknown = list(filter(lambda it: y[it] == -1, range(len(y))))
@@ -259,8 +256,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
-                                           callbacks=[early_stopping_callback], use_multiprocessing=True,
-                                           workers=max(os.cpu_count() - 1, 0))
+                                           callbacks=[early_stopping_callback])
             self.set_trainability_of_model(self.recognizer_, True)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
@@ -275,8 +271,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
-                                           callbacks=[early_stopping_callback], use_multiprocessing=True,
-                                           workers=max(os.cpu_count() - 1, 0))
+                                           callbacks=[early_stopping_callback])
             if self.verbose:
                 print('')
             indices_of_unknown_for_training = list(filter(lambda it: y[it] == -1, range(len(y))))
