@@ -184,7 +184,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = False
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -198,7 +198,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = True
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -248,7 +248,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = False
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -263,7 +263,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = True
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-5), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
