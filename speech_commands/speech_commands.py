@@ -912,12 +912,15 @@ class TrainsetGenerator(keras.utils.Sequence):
                 if self.use_augmentation:
                     bins_per_octave = 24
                     pitch_pm = 4
-                    pitch_change = pitch_pm * 2 * (np.random.uniform() - 0.5)
+                    pitch_change = pitch_pm * 2 * np.random.uniform(-0.5, 0.5)
                     augmented_sound = librosa.effects.pitch_shift(
                         source_sound[0:sound_length].astype("float64"), self.sampling_frequency, n_steps=pitch_change,
                         bins_per_octave=bins_per_octave
                     )
-                    if self.background_sounds != None:
+                    speed_rate = np.random.uniform(0.9, 1.1)
+                    if abs(speed_rate - 1.0) > 1e-4:
+                        augmented_sound = librosa.effects.time_stretch(augmented_sound, speed_rate)
+                    if self.background_sounds is not None:
                         number_of_background_sounds = self.background_sounds.shape[0] \
                             if isinstance(self.background_sounds, np.ndarray) else len(self.background_sounds)
                         background_sound = self.background_sounds[random.randint(0, number_of_background_sounds - 1)]
@@ -952,22 +955,19 @@ class TrainsetGenerator(keras.utils.Sequence):
                                                      dtype=background_sound.dtype)
                                         )
                                     )
-                            augmented_sound = augmented_sound * np.random.uniform(0.8, 1.2) + \
-                                              background_sound.astype("float64") * np.random.uniform(0, 0.1)
+                            noise_ratio = np.random.uniform(0.05, 0.15)
+                            augmented_sound = augmented_sound * (1.0 - noise_ratio) + \
+                                              background_sound.astype("float64") * noise_ratio
                     spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
                         sound=augmented_sound, sampling_frequency=self.sampling_frequency,
                         melfb=self.melfb, window_size=self.window_size, shift_size=self.shift_size,
                     )
                 else:
                     spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
-                        sound=source_sound[0:sound_length], sampling_frequency=self.sampling_frequency,
-                        melfb=self.melfb, window_size=self.window_size, shift_size=self.shift_size,
+                        sound=source_sound[0:sound_length].astype("float64"), melfb=self.melfb,
+                        window_size=self.window_size, shift_size=self.shift_size,
+                        sampling_frequency=self.sampling_frequency
                     )
-                if self.use_augmentation:
-                    speed_rate = np.random.uniform(0.9, 1.1)
-                    new_length = int(round(speed_rate * spectrogram.shape[0]))
-                    if (new_length != spectrogram.shape[0]) and (new_length > 2):
-                        spectrogram = resample(spectrogram, num=new_length, axis=0)
                 normalized_spectrograms[sample_idx - batch_start] = MobilenetRecognizer.normalize_melspectrogram(
                     spectrogram=spectrogram, amplitude_bounds=(self.min_amplitude, self.max_amplitude)
                 )
@@ -979,11 +979,11 @@ class TrainsetGenerator(keras.utils.Sequence):
         )
         del normalized_spectrograms
         if self.sample_weight is None:
-            return spectrograms_as_images, targets
+            return spectrograms_as_images.astype("float32"), targets
         sample_weights = np.zeros(shape=(batch_size,), dtype=np.float32)
         for sample_idx in range(batch_start, batch_end):
             sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
-        return spectrograms_as_images, targets, sample_weights
+        return spectrograms_as_images.astype("float32"), targets, sample_weights
 
 
 class DatasetGenerator(keras.utils.Sequence):
