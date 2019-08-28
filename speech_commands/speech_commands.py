@@ -193,23 +193,26 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
                                                            patience=max(2, self.patience - 2), min_lr=0.5e-6)
-            callbacks = [lr_scheduler, lr_reducer]
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
-                                           verbose=2 if self.verbose else 0, callbacks=callbacks)
+                                           verbose=2 if self.verbose else 0, callbacks=[lr_scheduler, lr_reducer])
+            del lr_scheduler, lr_reducer
             self.set_trainability_of_model(self.recognizer_, True)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = True
-            self.recognizer_.compile(optimizer=keras.optimizers.Adam(lr=0.5e-6), loss='categorical_crossentropy',
-                                     metrics=['categorical_accuracy'])
+            self.recognizer_.compile(optimizer=keras.optimizers.Adam(lr=lr_schedule(0.0)),
+                                     loss='categorical_crossentropy', metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
                 print('Training with tuned base...')
                 print('')
                 keras.utils.print_summary(self.recognizer_, line_length=120)
+            lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
+            lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
+                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
-                                           verbose=2 if self.verbose else 0)
+                                           verbose=2 if self.verbose else 0, callbacks=[lr_scheduler, lr_reducer])
             if self.verbose:
                 print('')
             indices_of_unknown = list(filter(lambda it: y[it] == -1, range(len(y))))
@@ -281,9 +284,12 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
                 monitor='val_loss', mode='min'
             )
+            lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
+            lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
+                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
-                                           callbacks=[early_stopping_callback])
+                                           callbacks=[early_stopping_callback, lr_scheduler, lr_reducer])
             if self.verbose:
                 print('')
             indices_of_unknown_for_training = list(filter(lambda it: y[it] == -1, range(len(y))))
