@@ -33,7 +33,7 @@ def main():
     parser.add_argument('--layers', dest='hidden_layers', type=str, required=False, default=None,
                         help='Sizes of hidden layers which will be added after MobileNet (these sizes must be '
                              'splitted by `-`).')
-    parser.add_argument('--with_augmentation', dest='with_augmentation', type=bool, required=False, action='store_true',
+    parser.add_argument('--with_augmentation', dest='with_augmentation', action='store_true',
                         help='Need to augmentate data during training.')
     cmd_args = parser.parse_args()
 
