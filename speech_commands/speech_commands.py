@@ -21,8 +21,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     IMAGESIZE = (224, 224)
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
-                 layer_level: int=3, hidden_layers: tuple=(100,), batch_size: int=32, max_epochs: int=100,
-                 patience: int=5, verbose: bool=False, warm_start: bool=False, random_seed=None):
+                 layer_level: int=3, hidden_layers: tuple=(100,), batch_size: int=32, max_epochs: int=200,
+                 patience: int=7, verbose: bool=False, warm_start: bool=False, random_seed=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
@@ -183,21 +183,25 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = False
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
-                                     metrics=['categorical_accuracy'])
+            self.recognizer_.compile(optimizer=keras.optimizers.Adam(lr=lr_schedule(0.0)),
+                                     loss='categorical_crossentropy', metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
                 print('Training with frozen base...')
                 print('')
                 keras.utils.print_summary(self.recognizer_, line_length=120)
+            lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
+            lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
+                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
+            callbacks = [lr_scheduler, lr_reducer]
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
-                                           verbose=2 if self.verbose else 0)
+                                           verbose=2 if self.verbose else 0, callbacks=callbacks)
             self.set_trainability_of_model(self.recognizer_, True)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = True
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.Adam(lr=0.5e-6), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
@@ -242,13 +246,16 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
                 monitor='val_loss', mode='min'
             )
+            lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
+            lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
+                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
             self.set_trainability_of_model(self.recognizer_, False)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = False
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
-                                     metrics=['categorical_accuracy'])
+            self.recognizer_.compile(optimizer=keras.optimizers.Adam(lr=lr_schedule(0.0)),
+                                     loss='categorical_crossentropy', metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
                 print('Training with frozen base...')
@@ -256,19 +263,24 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
-                                           callbacks=[early_stopping_callback])
+                                           callbacks=[early_stopping_callback, lr_scheduler, lr_reducer])
+            del lr_scheduler, lr_reducer, early_stopping_callback
             self.set_trainability_of_model(self.recognizer_, True)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('hiddenlayer'):
                         cur_layer.trainable = True
-            self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=1e-6), loss='categorical_crossentropy',
+            self.recognizer_.compile(optimizer=keras.optimizers.Adam(lr=0.5e-6), loss='categorical_crossentropy',
                                      metrics=['categorical_accuracy'])
             if self.verbose:
                 print('')
                 print('Training with tuned base...')
                 print('')
                 keras.utils.print_summary(self.recognizer_, line_length=120)
+            early_stopping_callback = keras.callbacks.EarlyStopping(
+                patience=self.patience, verbose=self.verbose, restore_best_weights=True,
+                monitor='val_loss', mode='min'
+            )
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
                                            callbacks=[early_stopping_callback])
@@ -861,6 +873,19 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         if class_idx >= 0:
             res[class_idx] = 1.0
         return res
+
+
+def lr_schedule(epoch):
+    lr = 1e-3
+    if epoch > 180:
+        lr *= 0.5e-3
+    elif epoch > 160:
+        lr *= 1e-3
+    elif epoch > 120:
+        lr *= 1e-2
+    elif epoch > 80:
+        lr *= 1e-1
+    return lr
 
 
 class TrainsetGenerator(keras.utils.Sequence):
