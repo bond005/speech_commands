@@ -41,6 +41,8 @@ def main():
     parser.add_argument('--layers', dest='hidden_layers', type=str, required=False, default=None,
                         help='Sizes of hidden layers which will be added after MobileNet (these sizes must be '
                              'splitted by `-`).')
+    parser.add_argument('--with_augmentation', dest='with_augmentation', type=bool, required=False, action='store_true',
+                        help='Need to augmentate data during training.')
     cmd_args = parser.parse_args()
 
     data_for_training, data_for_validation, data_for_testing, background_sounds, fs = \
@@ -69,7 +71,8 @@ def main():
     else:
         recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
                                          batch_size=128, max_epochs=200, patience=7, verbose=True, warm_start=False,
-                                         random_seed=42, hidden_layers=layers, layer_level=cmd_args.deep_of_mobilenet)
+                                         random_seed=42, hidden_layers=layers, layer_level=cmd_args.deep_of_mobilenet,
+                                         use_augmentation=cmd_args.with_augmentation)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation,
                        background=background_sounds)
         with open(model_name, 'wb') as fp:

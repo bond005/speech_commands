@@ -46,6 +46,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertTrue(hasattr(self.cls, 'sampling_frequency'))
         self.assertTrue(hasattr(self.cls, 'hidden_layers'))
         self.assertTrue(hasattr(self.cls, 'layer_level'))
+        self.assertTrue(hasattr(self.cls, 'use_augmentation'))
         self.assertIsInstance(self.cls.batch_size, int)
         self.assertIsInstance(self.cls.max_epochs, int)
         self.assertIsInstance(self.cls.patience, int)
@@ -56,12 +57,14 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertIsInstance(self.cls.shift_size, float)
         self.assertIsInstance(self.cls.hidden_layers, tuple)
         self.assertIsInstance(self.cls.layer_level, int)
+        self.assertIsInstance(self.cls.use_augmentation, bool)
         self.assertIsNone(self.cls.random_seed)
 
     def test_check_params_positive(self):
         MobilenetRecognizer.check_params(
             sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-            verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+            verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+            use_augmentation=False
         )
         self.assertTrue(True)
 
@@ -70,7 +73,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5, hidden_layers=(300, 100),
-                verbose=False, warm_start=False, random_seed=None, layer_level=3
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, use_augmentation=False
             )
 
     def test_check_params_negative02(self):
@@ -78,7 +81,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=3.5, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative03(self):
@@ -87,7 +91,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=-3, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative04(self):
@@ -95,7 +100,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=6000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative05(self):
@@ -103,7 +109,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative06(self):
@@ -112,7 +119,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=-2.5, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative07(self):
@@ -120,7 +128,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=2, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative08(self):
@@ -128,7 +137,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=1e-4, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative09(self):
@@ -136,7 +146,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative10(self):
@@ -145,7 +156,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=-0.01, batch_size=32, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative11(self):
@@ -153,7 +165,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=1, batch_size=32, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative12(self):
@@ -169,7 +182,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative14(self):
@@ -177,7 +191,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size='3', max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative15(self):
@@ -185,7 +200,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=-3, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative16(self):
@@ -193,7 +209,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative17(self):
@@ -201,7 +218,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs='100',
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative18(self):
@@ -209,7 +227,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=-3,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative19(self):
@@ -217,7 +236,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative20(self):
@@ -226,7 +246,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100,
-                patience='5', verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience='5', verbose=False, warm_start=False, random_seed=None, layer_level=3,
+                hidden_layers=(300, 100), use_augmentation=False
             )
 
     def test_check_params_negative21(self):
@@ -234,7 +255,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100,
-                patience=-3, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=-3, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative22(self):
@@ -242,7 +264,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100), use_augmentation=False
             )
 
     def test_check_params_negative23(self):
@@ -250,7 +272,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                warm_start=False, verbose=True, layer_level=3, hidden_layers=(300, 100)
+                warm_start=False, verbose=True, layer_level=3, hidden_layers=(300, 100), use_augmentation=False
             )
 
     def test_check_params_negative24(self):
@@ -258,7 +280,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                warm_start=False, verbose=True, random_seed=-3.5, layer_level=3, hidden_layers=(300, 100)
+                warm_start=False, verbose=True, random_seed=-3.5, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative25(self):
@@ -266,7 +289,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.00625, shift_size=0.01, batch_size=32, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative28(self):
@@ -274,7 +298,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, random_seed=None, layer_level=3, hidden_layers=(300, 100)
+                verbose=False, random_seed=None, layer_level=3, hidden_layers=(300, 100), use_augmentation=False
             )
 
     def test_check_params_negative29(self):
@@ -282,7 +306,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, hidden_layers=(300, 100)
+                verbose=False, warm_start=False, random_seed=None, hidden_layers=(300, 100), use_augmentation=False
             )
 
     def test_check_params_negative30(self):
@@ -290,7 +314,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level='3', hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level='3',
+                hidden_layers=(300, 100), use_augmentation=False
             )
 
     def test_check_params_negative31(self):
@@ -299,7 +324,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=0, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=0, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative32(self):
@@ -308,7 +334,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100,
-                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=15, hidden_layers=(300, 100)
+                patience=5, verbose=False, warm_start=False, random_seed=None, layer_level=15, hidden_layers=(300, 100),
+                use_augmentation=False
             )
 
     def test_check_params_negative33(self):
@@ -316,7 +343,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, use_augmentation=False
             )
 
     def test_check_params_negative34(self):
@@ -324,7 +351,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3,
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, use_augmentation=False,
                 hidden_layers=np.array([[300, 100], [100, 50]], dtype=np.int32)
             )
 
@@ -334,7 +361,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers={300, 100}
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers={300, 100},
+                use_augmentation=False
             )
 
     def test_check_params_negative36(self):
@@ -342,7 +370,8 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=[300, 100, 0]
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=[300, 100, 0],
+                use_augmentation=False
             )
 
     def test_check_params_negative37(self):
@@ -350,7 +379,26 @@ class TestMobilenetRecognizer(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
                 sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
-                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=[300, 150.5, 100]
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=[300, 150.5, 100],
+                use_augmentation=False
+            )
+
+    def test_check_params_negative38(self):
+        true_err_msg = re.escape('`use_augmentation` is not specified!')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            MobilenetRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
+                verbose=False, random_seed=None, layer_level=3, hidden_layers=(300, 100), warm_start=False
+            )
+
+    def test_check_params_negative39(self):
+        true_err_msg = re.escape('`use_augmentation` is wrong! Expected `{0}`, got `{1}`.'.format(
+            type(True), type('True')))
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            MobilenetRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
+                verbose=False, random_seed=None, layer_level=3, hidden_layers=(300, 100), warm_start=False,
+                use_augmentation='False'
             )
 
     def test_check_X_positive01(self):
@@ -695,11 +743,13 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertTrue(hasattr(self.another_cls, 'sampling_frequency'))
         self.assertTrue(hasattr(self.another_cls, 'hidden_layers'))
         self.assertTrue(hasattr(self.another_cls, 'layer_level'))
+        self.assertTrue(hasattr(self.another_cls, 'use_augmentation'))
         self.assertIsInstance(self.another_cls.batch_size, int)
         self.assertIsInstance(self.another_cls.max_epochs, int)
         self.assertIsInstance(self.another_cls.patience, int)
         self.assertIsInstance(self.another_cls.verbose, bool)
         self.assertIsInstance(self.another_cls.warm_start, bool)
+        self.assertIsInstance(self.another_cls.use_augmentation, bool)
         self.assertIsInstance(self.another_cls.sampling_frequency, int)
         self.assertIsInstance(self.another_cls.window_size, float)
         self.assertIsInstance(self.another_cls.shift_size, float)
@@ -715,6 +765,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertEqual(self.cls.hidden_layers, self.another_cls.hidden_layers)
         self.assertEqual(self.cls.layer_level, self.another_cls.layer_level)
         self.assertTrue(self.another_cls.warm_start)
+        self.assertFalse(self.another_cls.use_augmentation)
         self.assertTrue(self.another_cls.verbose)
 
     def test_serialize_positive02(self):
@@ -740,6 +791,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertTrue(hasattr(self.another_cls, 'patience'))
         self.assertTrue(hasattr(self.another_cls, 'verbose'))
         self.assertTrue(hasattr(self.another_cls, 'warm_start'))
+        self.assertTrue(hasattr(self.another_cls, 'use_augmentation'))
         self.assertTrue(hasattr(self.another_cls, 'window_size'))
         self.assertTrue(hasattr(self.another_cls, 'shift_size'))
         self.assertTrue(hasattr(self.another_cls, 'sampling_frequency'))
@@ -750,6 +802,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
         self.assertIsInstance(self.another_cls.patience, int)
         self.assertIsInstance(self.another_cls.verbose, bool)
         self.assertIsInstance(self.another_cls.warm_start, bool)
+        self.assertIsInstance(self.another_cls.use_augmentation, bool)
         self.assertIsInstance(self.another_cls.sampling_frequency, int)
         self.assertIsInstance(self.another_cls.window_size, float)
         self.assertIsInstance(self.another_cls.shift_size, float)

@@ -22,7 +22,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
                  layer_level: int=3, hidden_layers: tuple=(100,), batch_size: int=32, max_epochs: int=200,
-                 patience: int=7, verbose: bool=False, warm_start: bool=False, random_seed=None):
+                 patience: int=7, verbose: bool=False, warm_start: bool=False, use_augmentation: bool=False,
+                 random_seed=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
@@ -34,13 +35,14 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.warm_start = warm_start
         self.verbose = verbose
         self.hidden_layers = hidden_layers
+        self.use_augmentation = use_augmentation
 
     def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
                           random_seed=self.random_seed, layer_level=self.layer_level,
-                          hidden_layers=self.hidden_layers)
+                          use_augmentation=self.use_augmentation, hidden_layers=self.hidden_layers)
         classes_dict, classes_dict_reverse = self.check_Xy(X, 'X', y, 'y')
         n_train = len(y)
         if self.verbose:
@@ -175,7 +177,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             X=X, y=y, batch_size=self.batch_size, melfb=self.melfb_,
             window_size=self.window_size, shift_size=self.shift_size, sampling_frequency=self.sampling_frequency,
             min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_, classes=self.classes_,
-            sample_weight=sample_weight, use_augmentation=True, background_sounds=background_sounds
+            sample_weight=sample_weight, use_augmentation=self.use_augmentation, background_sounds=background_sounds
         )
         if (X_val is None) or (y_val is None):
             self.set_trainability_of_model(self.recognizer_, False)
@@ -243,7 +245,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             validset_generator = TrainsetGenerator(
                 X=X_val, y=y_val, batch_size=self.batch_size, melfb=self.melfb_, window_size=self.window_size,
                 shift_size=self.shift_size, sampling_frequency=self.sampling_frequency, classes=self.classes_,
-                min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_, sample_weight=None
+                min_amplitude=self.min_amplitude_, max_amplitude=self.max_amplitude_, sample_weight=None,
+                use_augmentation=False
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
@@ -368,7 +371,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed, layer_level=self.layer_level, hidden_layers=self.hidden_layers)
+                          random_seed=self.random_seed, layer_level=self.layer_level, hidden_layers=self.hidden_layers,
+                          use_augmentation=self.use_augmentation)
         self.check_X(X, 'X')
         self.check_is_fitted()
         if not hasattr(self, 'melfb_'):
@@ -428,7 +432,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 'layer_level': self.layer_level, 'hidden_layers': copy.copy(self.hidden_layers),
                 'shift_size': self.shift_size, 'batch_size': self.batch_size, 'max_epochs': self.max_epochs,
                 'patience': self.patience, 'verbose': self.verbose, 'warm_start': self.warm_start,
-                'random_seed': self.random_seed}
+                'random_seed': self.random_seed, 'use_augmentation': self.use_augmentation}
 
     def set_params(self, **params):
         for parameter, value in params.items():
@@ -759,6 +763,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 (not isinstance(kwargs['warm_start'], bool)) and (not isinstance(kwargs['warm_start'], np.bool)):
             raise ValueError('`warm_start` is wrong! Expected `{0}`, got `{1}`.'.format(
                 type(True), type(kwargs['warm_start'])))
+        if 'use_augmentation' not in kwargs:
+            raise ValueError('`use_augmentation` is not specified!')
+        if (not isinstance(kwargs['use_augmentation'], int)) and \
+                (not isinstance(kwargs['use_augmentation'], np.int32)) and \
+                (not isinstance(kwargs['use_augmentation'], np.uint32)) and \
+                (not isinstance(kwargs['use_augmentation'], bool)) and \
+                (not isinstance(kwargs['use_augmentation'], np.bool)):
+            raise ValueError('`use_augmentation` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(True), type(kwargs['use_augmentation'])))
         if 'random_seed' not in kwargs:
             raise ValueError('`random_seed` is not specified!')
         if kwargs['random_seed'] is not None:
@@ -940,54 +953,11 @@ class TrainsetGenerator(keras.utils.Sequence):
                 )
             else:
                 if self.use_augmentation:
-                    bins_per_octave = 24
-                    pitch_pm = 4
-                    pitch_change = pitch_pm * 2 * np.random.uniform(-0.5, 0.5)
-                    augmented_sound = librosa.effects.pitch_shift(
-                        source_sound[0:sound_length].astype("float64"), self.sampling_frequency, n_steps=pitch_change,
-                        bins_per_octave=bins_per_octave
-                    )
-                    speed_rate = np.random.uniform(0.9, 1.1)
-                    if abs(speed_rate - 1.0) > 1e-4:
-                        augmented_sound = librosa.effects.time_stretch(augmented_sound, speed_rate)
-                    if self.background_sounds is not None:
-                        number_of_background_sounds = self.background_sounds.shape[0] \
-                            if isinstance(self.background_sounds, np.ndarray) else len(self.background_sounds)
-                        background_sound = self.background_sounds[random.randint(0, number_of_background_sounds - 1)]
-                        sound_length = MobilenetRecognizer.strip_sound(background_sound)
-                        if sound_length > 0:
-                            if sound_length > len(augmented_sound):
-                                sound_start = random.randint(0, sound_length - len(augmented_sound))
-                                background_sound = background_sound[sound_start:(sound_start + len(augmented_sound))]
-                            elif sound_length < len(augmented_sound):
-                                sound_start = random.randint(0, len(augmented_sound) - sound_length)
-                                if (sound_start > 0) and ((sound_start + sound_length) < len(augmented_sound)):
-                                    background_sound = np.concatenate(
-                                        (
-                                            np.zeros((sound_start,), dtype=background_sound.dtype),
-                                            background_sound,
-                                            np.zeros((len(augmented_sound) - (sound_start + sound_length),),
-                                                     dtype=background_sound.dtype)
-                                        )
-                                    )
-                                elif sound_start > 0:
-                                    background_sound = np.concatenate(
-                                        (
-                                            np.zeros((sound_start,), dtype=background_sound.dtype),
-                                            background_sound,
-                                        )
-                                    )
-                                else:
-                                    background_sound = np.concatenate(
-                                        (
-                                            background_sound,
-                                            np.zeros((len(augmented_sound) - (sound_start + sound_length),),
-                                                     dtype=background_sound.dtype)
-                                        )
-                                    )
-                            noise_ratio = np.random.uniform(0.05, 0.15)
-                            augmented_sound = augmented_sound * (1.0 - noise_ratio) + \
-                                              background_sound.astype("float64") * noise_ratio
+                    augmented_sound = self.change_sound(source_sound[0:sound_length],
+                                                        sampling_frequency=self.sampling_frequency,
+                                                        pitch_rate=np.random.uniform(-0.5, 0.5),
+                                                        speed_rate=np.random.uniform(0.9, 1.1),
+                                                        background_sounds=self.background_sounds)
                     spectrogram = MobilenetRecognizer.sound_to_melspectrogram(
                         sound=augmented_sound, sampling_frequency=self.sampling_frequency,
                         melfb=self.melfb, window_size=self.window_size, shift_size=self.shift_size,
@@ -1014,6 +984,62 @@ class TrainsetGenerator(keras.utils.Sequence):
         for sample_idx in range(batch_start, batch_end):
             sample_weights[sample_idx - batch_start] = self.sample_weight[self.indices[sample_idx]]
         return spectrograms_as_images.astype("float32"), targets, sample_weights
+
+    @staticmethod
+    def change_sound(source_sound: np.ndarray, sampling_frequency: int, pitch_rate: float, speed_rate: float,
+                     background_sounds: Union[list, tuple, np.ndarray, None]=None) -> np.ndarray:
+        if (pitch_rate < -0.5) or (pitch_rate > 0.5):
+            raise ValueError('')
+        if (speed_rate < 0.9) or (speed_rate > 1.1):
+            raise ValueError('')
+        bins_per_octave = 24
+        pitch_pm = 4
+        pitch_change = pitch_pm * 2 * pitch_rate
+        augmented_sound = librosa.effects.pitch_shift(
+            source_sound.astype("float64"), sampling_frequency, n_steps=pitch_change,
+            bins_per_octave=bins_per_octave
+        )
+        if abs(speed_rate - 1.0) > 1e-4:
+            augmented_sound = librosa.effects.time_stretch(augmented_sound, speed_rate)
+        if background_sounds is not None:
+            number_of_background_sounds = background_sounds.shape[0] \
+                if isinstance(background_sounds, np.ndarray) else len(background_sounds)
+            background_sound = background_sounds[random.randint(0, number_of_background_sounds - 1)]
+            sound_length = MobilenetRecognizer.strip_sound(background_sound)
+            if sound_length > 0:
+                if sound_length > len(augmented_sound):
+                    sound_start = random.randint(0, sound_length - len(augmented_sound))
+                    background_sound = background_sound[sound_start:(sound_start + len(augmented_sound))]
+                elif sound_length < len(augmented_sound):
+                    sound_start = random.randint(0, len(augmented_sound) - sound_length)
+                    if (sound_start > 0) and ((sound_start + sound_length) < len(augmented_sound)):
+                        background_sound = np.concatenate(
+                            (
+                                np.zeros((sound_start,), dtype=background_sound.dtype),
+                                background_sound,
+                                np.zeros((len(augmented_sound) - (sound_start + sound_length),),
+                                         dtype=background_sound.dtype)
+                            )
+                        )
+                    elif sound_start > 0:
+                        background_sound = np.concatenate(
+                            (
+                                np.zeros((sound_start,), dtype=background_sound.dtype),
+                                background_sound,
+                            )
+                        )
+                    else:
+                        background_sound = np.concatenate(
+                            (
+                                background_sound,
+                                np.zeros((len(augmented_sound) - (sound_start + sound_length),),
+                                         dtype=background_sound.dtype)
+                            )
+                        )
+                noise_ratio = np.random.uniform(0.05, 0.15)
+                augmented_sound = augmented_sound * (1.0 - noise_ratio) + \
+                                  background_sound.astype("float64") * noise_ratio
+        return augmented_sound
 
 
 class DatasetGenerator(keras.utils.Sequence):
