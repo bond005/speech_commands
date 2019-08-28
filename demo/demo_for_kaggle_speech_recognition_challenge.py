@@ -62,6 +62,9 @@ def main():
     print('Number of sounds for final testing after filtering is {0}.'.format(len(data_for_testing[0])))
     print('Number of background sounds after filtering is {0}.'.format(len(background_sounds)))
     print('')
+    if not cmd_args.with_augmentation:
+        print('Augmentation is not used.')
+        print('')
 
     layers = parse_layers(cmd_args.hidden_layers)
     model_name = os.path.normpath(cmd_args.model_name)
