@@ -21,7 +21,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     IMAGESIZE = (224, 224)
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
-                 layer_level: int=3, hidden_layers: tuple=(100,), batch_size: int=32, max_epochs: int=200,
+                 layer_level: int=3, hidden_layers: tuple=(512,), batch_size: int=32, max_epochs: int=200,
                  patience: int=7, verbose: bool=False, warm_start: bool=False, use_augmentation: bool=False,
                  random_seed=None):
         self.sampling_frequency = sampling_frequency
@@ -94,24 +94,30 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 neural_network = self.recognizer_.get_layer('conv_pw_{0}'.format(layer_index))(neural_network)
                 neural_network = self.recognizer_.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
                 neural_network = self.recognizer_.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
-            neural_network = self.recognizer_.get_layer('PoolingLayer')(neural_network)
-            if len(self.hidden_layers) > 0:
-                hidden_layer = self.recognizer_.get_layer('Dropout1')(neural_network)
-                hidden_layer = self.recognizer_.get_layer(name='HiddenLayer1')(hidden_layer)
-                for layer_index in range(1, len(self.hidden_layers)):
-                    hidden_layer = self.recognizer_.get_layer('Dropout{0}')(hidden_layer)
-                    hidden_layer = self.recognizer_.get_layer(
-                        name='HiddenLayer{0}'.format(layer_index + 1)
-                    )(hidden_layer)
-                output_layer = keras.layers.Dense(
-                    units=len(self.classes_), activation='softmax',
-                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
-                )(self.recognizer_.get_layer('Dropout{0}'.format(len(self.hidden_layers) + 1))(hidden_layer))
+            neural_network = self.recognizer_.get_layer('ReshapeLayer')(neural_network)
+            if len(self.hidden_layers) > 1:
+                forward_rnn = self.recognizer_.get_layer('ForwardGRU1')(neural_network)
+                backward_rnn = self.recognizer_.get_layer('BackwardGRU1')(neural_network)
+                for layer_index in range(1, len(self.hidden_layers) - 1):
+                    forward_rnn = self.recognizer_.get_layer('ForwardGRU{0}'.format(layer_index + 1))(forward_rnn)
+                    backward_rnn = self.recognizer_.get_layer('BackwardGRU{0}'.format(layer_index + 1))(backward_rnn)
+                hidden_layer = self.recognizer_.get_layer('ConcatLayer')(
+                    [
+                        self.recognizer_.get_layer('ForwardGRU{0}'.format(len(self.hidden_layers)))(forward_rnn),
+                        self.recognizer_.get_layer('BackwardGRU{0}'.format(len(self.hidden_layers)))(backward_rnn)
+                    ]
+                )
             else:
-                output_layer = keras.layers.Dense(
-                    units=len(self.classes_), activation='softmax',
-                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
-                )(self.recognizer_.get_layer('Dropout1')(neural_network))
+                hidden_layer = self.recognizer_.get_layer('ConcatLayer')(
+                    [
+                        self.recognizer_.get_layer('ForwardGRU{0}'.format(len(self.hidden_layers)))(neural_network),
+                        self.recognizer_.get_layer('BackwardGRU{0}'.format(len(self.hidden_layers)))(neural_network)
+                    ]
+                )
+            output_layer = keras.layers.Dense(
+                units=len(self.classes_), activation='softmax',
+                kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
+            )(self.recognizer_.get_layer('Dropout{0}'.format(len(self.hidden_layers) + 1))(hidden_layer))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
         else:
             self.finalize_model()
@@ -133,6 +139,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             neural_network = mobilenet.get_layer('conv1')(neural_network)
             neural_network = mobilenet.get_layer('conv1_bn')(neural_network)
             neural_network = mobilenet.get_layer('conv1_relu')(neural_network)
+            output_shape = mobilenet.get_layer('conv1_relu').output_shape
             for layer_index in range(1, self.layer_level + 1):
                 if layer_index in {2, 4, 6, 12}:
                     neural_network = mobilenet.get_layer('conv_pad_{0}'.format(layer_index))(neural_network)
@@ -142,32 +149,70 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 neural_network = mobilenet.get_layer('conv_pw_{0}'.format(layer_index))(neural_network)
                 neural_network = mobilenet.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
                 neural_network = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
-            neural_network = keras.layers.GlobalAveragePooling2D(name='PoolingLayer')(neural_network)
-            if len(self.hidden_layers) > 0:
-                hidden_layer = keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network)
-                hidden_layer = keras.layers.Dense(
-                    units=self.hidden_layers[0], activation='relu',
-                    kernel_initializer=keras.initializers.he_normal(seed=self.random_seed),
-                    name='HiddenLayer1'
-                )(hidden_layer)
-                for layer_index in range(1, len(self.hidden_layers)):
-                    hidden_layer = keras.layers.Dropout(name='Dropout{0}'.format(layer_index + 1), rate=0.3,
-                                                        seed=self.random_seed)(hidden_layer)
-                    hidden_layer = keras.layers.Dense(
-                        units=self.hidden_layers[layer_index], activation='relu',
-                        kernel_initializer=keras.initializers.he_normal(seed=self.random_seed),
-                        name='HiddenLayer{0}'.format(layer_index + 1)
-                    )(hidden_layer)
-                output_layer = keras.layers.Dense(
-                    units=len(self.classes_), activation='softmax',
-                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
-                )(keras.layers.Dropout(name='Dropout{0}'.format(len(self.hidden_layers) + 1), rate=0.3,
-                                       seed=self.random_seed)(hidden_layer))
+                output_shape = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index)).output_shape
+            neural_network = keras.layers.Reshape(
+                name='ReshapeLayer', target_shape=(output_shape[-3], output_shape[-2] * output_shape[-1])
+            )(neural_network)
+            if len(self.hidden_layers) > 1:
+                forward_rnn = keras.layers.CuDNNGRU(
+                    units=self.hidden_layers[0], return_sequences=True, return_state=False, go_backwards=False,
+                    kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                    name='ForwardGRU1'
+                )(neural_network)
+                backward_rnn = keras.layers.CuDNNGRU(
+                    units=self.hidden_layers[0], return_sequences=True, return_state=False, go_backwards=True,
+                    kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                    name='BackwardGRU1'
+                )(neural_network)
+                for layer_index in range(1, len(self.hidden_layers) - 1):
+                    forward_rnn = keras.layers.CuDNNGRU(
+                        units=self.hidden_layers[layer_index], return_sequences=True, return_state=False,
+                        go_backwards=False, kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                        name='ForwardGRU{0}'.format(layer_index + 1)
+                    )(forward_rnn)
+                    backward_rnn = keras.layers.CuDNNGRU(
+                        units=self.hidden_layers[layer_index], return_sequences=True, return_state=False,
+                        go_backwards=True, kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                        name='BackwardGRU{0}'.format(layer_index + 1)
+                    )(backward_rnn)
+                hidden_layer = keras.layers.Concatenate(name='ConcatLayer')(
+                    [
+                        keras.layers.CuDNNGRU(
+                            units=self.hidden_layers[-1], return_sequences=False, return_state=False,
+                            go_backwards=False,
+                            kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                            name='ForwardGRU{0}'.format(len(self.hidden_layers))
+                        )(forward_rnn),
+                        keras.layers.CuDNNGRU(
+                            units=self.hidden_layers[-1], return_sequences=False, return_state=False,
+                            go_backwards=True,
+                            kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                            name='BackwardGRU{0}'.format(len(self.hidden_layers))
+                        )(backward_rnn)
+                    ]
+                )
             else:
-                output_layer = keras.layers.Dense(
-                    units=len(self.classes_), activation='softmax',
-                    kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
-                )(keras.layers.Dropout(name='Dropout1', rate=0.3, seed=self.random_seed)(neural_network))
+                hidden_layer = keras.layers.Concatenate(name='ConcatLayer')(
+                    [
+                        keras.layers.CuDNNGRU(
+                            units=self.hidden_layers[-1], return_sequences=False, return_state=False,
+                            go_backwards=False,
+                            kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                            name='ForwardGRU{0}'.format(len(self.hidden_layers))
+                        )(neural_network),
+                        keras.layers.CuDNNGRU(
+                            units=self.hidden_layers[-1], return_sequences=False, return_state=False,
+                            go_backwards=True,
+                            kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                            name='BackwardGRU{0}'.format(len(self.hidden_layers))
+                        )(neural_network)
+                    ]
+                )
+            output_layer = keras.layers.Dense(
+                units=len(self.classes_), activation='softmax',
+                kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
+            )(keras.layers.Dropout(name='Dropout{0}'.format(len(self.hidden_layers) + 1), rate=0.3,
+                                   seed=self.random_seed)(hidden_layer))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
         if 'sample_weight' in kwargs:
             sample_weight = kwargs['sample_weight']
@@ -250,7 +295,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
-                monitor='val_loss', mode='min'
+                monitor='val_categorical_accuracy', mode='max'
             )
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
@@ -285,7 +330,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
-                monitor='val_loss', mode='min'
+                monitor='val_categorical_accuracy', mode='max'
             )
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
@@ -667,14 +712,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             if len(kwargs['hidden_layers'].shape) != 1:
                 raise ValueError('`hidden_layers` is wrong! Expected a 1-D array, got {0}-D one.'.format(
                     len(kwargs['hidden_layers'].shape)))
-        if len(kwargs['hidden_layers']) > 0:
-            for layer_idx in range(len(kwargs['hidden_layers'])):
-                if kwargs['hidden_layers'][layer_idx] != int(kwargs['hidden_layers'][layer_idx]):
-                    raise ValueError('`hidden_layers` is wrong! {0} is wrong size of layer {1}.'.format(
-                        kwargs['hidden_layers'][layer_idx], layer_idx + 1))
-                if kwargs['hidden_layers'][layer_idx] < 1:
-                    raise ValueError('`hidden_layers` is wrong! {0} is wrong size of layer {1}.'.format(
-                        kwargs['hidden_layers'][layer_idx], layer_idx + 1))
+        if len(kwargs['hidden_layers']) == 0:
+            raise ValueError('`hidden_layers` is wrong! It is empty.')
+        for layer_idx in range(len(kwargs['hidden_layers'])):
+            if kwargs['hidden_layers'][layer_idx] != int(kwargs['hidden_layers'][layer_idx]):
+                raise ValueError('`hidden_layers` is wrong! {0} is wrong size of layer {1}.'.format(
+                    kwargs['hidden_layers'][layer_idx], layer_idx + 1))
+            if kwargs['hidden_layers'][layer_idx] < 1:
+                raise ValueError('`hidden_layers` is wrong! {0} is wrong size of layer {1}.'.format(
+                    kwargs['hidden_layers'][layer_idx], layer_idx + 1))
         if 'batch_size' not in kwargs:
             raise ValueError('`batch_size` is not specified!')
         if (not isinstance(kwargs['batch_size'], int)) and (not isinstance(kwargs['batch_size'], np.int32)) and \

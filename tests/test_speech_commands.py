@@ -384,6 +384,15 @@ class TestMobilenetRecognizer(unittest.TestCase):
             )
 
     def test_check_params_negative38(self):
+        true_err_msg = re.escape('`hidden_layers` is wrong! It is empty.')
+        with self.assertRaisesRegex(ValueError, true_err_msg):
+            MobilenetRecognizer.check_params(
+                sampling_frequency=16000, window_size=0.025, shift_size=0.01, batch_size=32, max_epochs=100, patience=5,
+                verbose=False, warm_start=False, random_seed=None, layer_level=3, hidden_layers=[],
+                use_augmentation=False
+            )
+
+    def test_check_params_negative39(self):
         true_err_msg = re.escape('`use_augmentation` is not specified!')
         with self.assertRaisesRegex(ValueError, true_err_msg):
             MobilenetRecognizer.check_params(
@@ -391,7 +400,7 @@ class TestMobilenetRecognizer(unittest.TestCase):
                 verbose=False, random_seed=None, layer_level=3, hidden_layers=(300, 100), warm_start=False
             )
 
-    def test_check_params_negative39(self):
+    def test_check_params_negative40(self):
         true_err_msg = re.escape('`use_augmentation` is wrong! Expected `{0}`, got `{1}`.'.format(
             type(True), type('True')))
         with self.assertRaisesRegex(ValueError, true_err_msg):
