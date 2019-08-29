@@ -95,6 +95,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 neural_network = self.recognizer_.get_layer('conv_pw_{0}_bn'.format(layer_index))(neural_network)
                 neural_network = self.recognizer_.get_layer('conv_pw_{0}_relu'.format(layer_index))(neural_network)
             neural_network = self.recognizer_.get_layer('ReshapeLayer')(neural_network)
+            neural_network = self.recognizer_.get_layer('TimeDistr')(neural_network)
             if len(self.hidden_layers) > 1:
                 forward_rnn = self.recognizer_.get_layer('ForwardGRU1')(neural_network)
                 backward_rnn = self.recognizer_.get_layer('BackwardGRU1')(neural_network)
@@ -152,6 +153,14 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 output_shape = mobilenet.get_layer('conv_pw_{0}_relu'.format(layer_index)).output_shape
             neural_network = keras.layers.Reshape(
                 name='ReshapeLayer', target_shape=(output_shape[-3], output_shape[-2] * output_shape[-1])
+            )(neural_network)
+            neural_network = keras.layers.TimeDistributed(
+                keras.layers.Dense(
+                    units=output_shape[-1],
+                    kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
+                    name='TimeDistrDense'
+                ),
+                name='TimeDistr'
             )(neural_network)
             if len(self.hidden_layers) > 1:
                 forward_rnn = keras.layers.CuDNNGRU(
@@ -228,7 +237,10 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.set_trainability_of_model(self.recognizer_, False)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
-                    if cur_layer.name.lower().startswith('hiddenlayer'):
+                    if cur_layer.name.lower().startswith('timedistr') or \
+                            cur_layer.name.lower().startswith('hiddenlayer') or \
+                            cur_layer.name.lower().startswith('backwardgru') or \
+                            cur_layer.name.lower().startswith('forwardgru'):
                         cur_layer.trainable = False
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=lr_schedule(0.0), clipnorm=10.0),
                                      loss='categorical_crossentropy', metrics=['categorical_accuracy'])
@@ -295,7 +307,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             )
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
-                monitor='val_categorical_accuracy', mode='max'
+                monitor='val_loss', mode='min'
             )
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
@@ -303,7 +315,10 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             self.set_trainability_of_model(self.recognizer_, False)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
-                    if cur_layer.name.lower().startswith('hiddenlayer'):
+                    if cur_layer.name.lower().startswith('timedistr') or \
+                            cur_layer.name.lower().startswith('hiddenlayer') or \
+                            cur_layer.name.lower().startswith('backwardgru') or \
+                            cur_layer.name.lower().startswith('forwardgru'):
                         cur_layer.trainable = False
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=lr_schedule(0.0), clipnorm=10.0),
                                      loss='categorical_crossentropy', metrics=['categorical_accuracy'])
@@ -330,7 +345,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             early_stopping_callback = keras.callbacks.EarlyStopping(
                 patience=self.patience, verbose=self.verbose, restore_best_weights=True,
-                monitor='val_categorical_accuracy', mode='max'
+                monitor='val_loss', mode='min'
             )
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
