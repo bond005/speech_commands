@@ -67,7 +67,7 @@ def main():
         if model_kind == 'ann':
             layers = parse_layers(cmd_args.hidden_layers)
             recognizer = MobilenetRecognizer(sampling_frequency=sampling_frequency, window_size=0.025, shift_size=0.01,
-                                             batch_size=8, max_epochs=200, patience=7, verbose=True, warm_start=False,
+                                             batch_size=8, max_epochs=200, patience=10, verbose=True, warm_start=False,
                                              random_seed=42, hidden_layers=layers,
                                              layer_level=cmd_args.deep_of_mobilenet,
                                              use_augmentation=cmd_args.with_augmentation)

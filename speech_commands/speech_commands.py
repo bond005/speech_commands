@@ -239,7 +239,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
-                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
+                                                           patience=max(2, self.patience // 2), min_lr=0.5e-6)
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
                                            verbose=2 if self.verbose else 0, callbacks=[lr_scheduler, lr_reducer])
             del lr_scheduler, lr_reducer
@@ -257,7 +257,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 keras.utils.print_summary(self.recognizer_, line_length=120)
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
-                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
+                                                           patience=max(2, self.patience // 2), min_lr=0.5e-6)
             self.recognizer_.fit_generator(trainset_generator, shuffle=True, epochs=self.max_epochs,
                                            verbose=2 if self.verbose else 0, callbacks=[lr_scheduler, lr_reducer])
             if self.verbose:
@@ -299,7 +299,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             )
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
-                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
+                                                           patience=max(2, self.patience // 2), min_lr=0.5e-6)
             self.set_trainability_of_model(self.recognizer_, False)
             if self.warm_start:
                 for cur_layer in self.recognizer_.layers:
@@ -334,7 +334,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             )
             lr_scheduler = keras.callbacks.LearningRateScheduler(lr_schedule)
             lr_reducer = keras.callbacks.ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0,
-                                                           patience=max(2, self.patience - 2), min_lr=0.5e-6)
+                                                           patience=max(2, self.patience // 2), min_lr=0.5e-6)
             self.recognizer_.fit_generator(trainset_generator, validation_data=validset_generator, shuffle=True,
                                            epochs=self.max_epochs, verbose=2 if self.verbose else 0,
                                            callbacks=[early_stopping_callback, lr_scheduler, lr_reducer])
