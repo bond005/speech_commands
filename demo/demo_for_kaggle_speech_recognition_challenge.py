@@ -75,7 +75,7 @@ def main():
         recognizer = MobilenetRecognizer(sampling_frequency=fs, window_size=0.025, shift_size=0.01,
                                          batch_size=128, max_epochs=200, patience=10, verbose=True, warm_start=False,
                                          random_seed=42, hidden_layers=layers, layer_level=cmd_args.deep_of_mobilenet,
-                                         use_augmentation=cmd_args.with_augmentation)
+                                         use_augmentation=cmd_args.with_augmentation, l2_reg=1e-1)
         recognizer.fit(data_for_training[0], data_for_training[1], validation_data=data_for_validation,
                        background=background_sounds)
         with open(model_name, 'wb') as fp:

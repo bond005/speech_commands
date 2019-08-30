@@ -21,9 +21,9 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     IMAGESIZE = (224, 224)
 
     def __init__(self, sampling_frequency: int=16000, window_size: float=0.025, shift_size: float=0.01,
-                 layer_level: int=3, hidden_layers: tuple=(512,), batch_size: int=32, max_epochs: int=200,
-                 patience: int=7, verbose: bool=False, warm_start: bool=False, use_augmentation: bool=False,
-                 random_seed=None):
+                 layer_level: int=3, hidden_layers: tuple=(512,), l2_reg: float=1e-2, batch_size: int=32,
+                 max_epochs: int=200, patience: int=7, verbose: bool=False, warm_start: bool=False,
+                 use_augmentation: bool=False, random_seed=None):
         self.sampling_frequency = sampling_frequency
         self.window_size = window_size
         self.shift_size = shift_size
@@ -36,12 +36,13 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         self.verbose = verbose
         self.hidden_layers = hidden_layers
         self.use_augmentation = use_augmentation
+        self.l2_reg = l2_reg
 
     def fit(self, X: Union[np.ndarray, List[np.ndarray]], y: Union[np.ndarray, List[int], List[str]], **kwargs):
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
                           patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
-                          random_seed=self.random_seed, layer_level=self.layer_level,
+                          random_seed=self.random_seed, layer_level=self.layer_level, l2_reg=self.l2_reg,
                           use_augmentation=self.use_augmentation, hidden_layers=self.hidden_layers)
         classes_dict, classes_dict_reverse = self.check_Xy(X, 'X', y, 'y')
         n_train = len(y)
@@ -97,26 +98,26 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             neural_network = self.recognizer_.get_layer('ReshapeLayer')(neural_network)
             neural_network = self.recognizer_.get_layer('TimeDistr')(neural_network)
             if len(self.hidden_layers) > 1:
-                forward_rnn = self.recognizer_.get_layer('ForwardGRU1')(neural_network)
-                backward_rnn = self.recognizer_.get_layer('BackwardGRU1')(neural_network)
+                forward_rnn = self.recognizer_.get_layer('ForwardRNN1')(neural_network)
+                backward_rnn = self.recognizer_.get_layer('BackwardRNN1')(neural_network)
                 for layer_index in range(1, len(self.hidden_layers) - 1):
-                    forward_rnn = self.recognizer_.get_layer('ForwardGRU{0}'.format(layer_index + 1))(forward_rnn)
-                    backward_rnn = self.recognizer_.get_layer('BackwardGRU{0}'.format(layer_index + 1))(backward_rnn)
+                    forward_rnn = self.recognizer_.get_layer('ForwardRNN{0}'.format(layer_index + 1))(forward_rnn)
+                    backward_rnn = self.recognizer_.get_layer('BackwardRNN{0}'.format(layer_index + 1))(backward_rnn)
                 hidden_layer = self.recognizer_.get_layer('ConcatLayer')(
                     [
-                        self.recognizer_.get_layer('ForwardGRU{0}'.format(len(self.hidden_layers)))(forward_rnn),
-                        self.recognizer_.get_layer('BackwardGRU{0}'.format(len(self.hidden_layers)))(backward_rnn)
+                        self.recognizer_.get_layer('ForwardRNN{0}'.format(len(self.hidden_layers)))(forward_rnn),
+                        self.recognizer_.get_layer('BackwardRNN{0}'.format(len(self.hidden_layers)))(backward_rnn)
                     ]
                 )
             else:
                 hidden_layer = self.recognizer_.get_layer('ConcatLayer')(
                     [
-                        self.recognizer_.get_layer('ForwardGRU{0}'.format(len(self.hidden_layers)))(neural_network),
-                        self.recognizer_.get_layer('BackwardGRU{0}'.format(len(self.hidden_layers)))(neural_network)
+                        self.recognizer_.get_layer('ForwardRNN{0}'.format(len(self.hidden_layers)))(neural_network),
+                        self.recognizer_.get_layer('BackwardRNN{0}'.format(len(self.hidden_layers)))(neural_network)
                     ]
                 )
             output_layer = keras.layers.Dense(
-                units=len(self.classes_), activation='softmax',
+                units=len(self.classes_), activation='softmax', kernel_regularizer=keras.regularizers.l2(self.l2_reg),
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
             )(self.recognizer_.get_layer('Dropout{0}'.format(len(self.hidden_layers) + 1))(hidden_layer))
             self.recognizer_ = keras.models.Model(input_data, output_layer)
@@ -156,69 +157,69 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
             )(neural_network)
             neural_network = keras.layers.TimeDistributed(
                 keras.layers.Dense(
-                    units=output_shape[-1],
+                    units=output_shape[-1], use_bias=False, kernel_regularizer=keras.regularizers.l2(self.l2_reg),
                     kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
                     name='TimeDistrDense'
                 ),
                 name='TimeDistr'
             )(neural_network)
             if len(self.hidden_layers) > 1:
-                forward_rnn = keras.layers.CuDNNGRU(
+                forward_rnn = keras.layers.SimpleRNN(
                     units=self.hidden_layers[0], return_sequences=True, return_state=False, go_backwards=False,
                     kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                    name='ForwardGRU1'
+                    name='ForwardRNN1'
                 )(neural_network)
-                backward_rnn = keras.layers.CuDNNGRU(
+                backward_rnn = keras.layers.SimpleRNN(
                     units=self.hidden_layers[0], return_sequences=True, return_state=False, go_backwards=True,
                     kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                    name='BackwardGRU1'
+                    name='BackwardRNN1'
                 )(neural_network)
                 for layer_index in range(1, len(self.hidden_layers) - 1):
-                    forward_rnn = keras.layers.CuDNNGRU(
+                    forward_rnn = keras.layers.SimpleRNN(
                         units=self.hidden_layers[layer_index], return_sequences=True, return_state=False,
                         go_backwards=False, kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                        name='ForwardGRU{0}'.format(layer_index + 1)
+                        name='ForwardRNN{0}'.format(layer_index + 1)
                     )(forward_rnn)
-                    backward_rnn = keras.layers.CuDNNGRU(
+                    backward_rnn = keras.layers.SimpleRNN(
                         units=self.hidden_layers[layer_index], return_sequences=True, return_state=False,
                         go_backwards=True, kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                        name='BackwardGRU{0}'.format(layer_index + 1)
+                        name='BackwardRNN{0}'.format(layer_index + 1)
                     )(backward_rnn)
                 hidden_layer = keras.layers.Concatenate(name='ConcatLayer')(
                     [
-                        keras.layers.CuDNNGRU(
+                        keras.layers.SimpleRNN(
                             units=self.hidden_layers[-1], return_sequences=False, return_state=False,
                             go_backwards=False,
                             kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                            name='ForwardGRU{0}'.format(len(self.hidden_layers))
+                            name='ForwardRNN{0}'.format(len(self.hidden_layers))
                         )(forward_rnn),
-                        keras.layers.CuDNNGRU(
+                        keras.layers.SimpleRNN(
                             units=self.hidden_layers[-1], return_sequences=False, return_state=False,
                             go_backwards=True,
                             kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                            name='BackwardGRU{0}'.format(len(self.hidden_layers))
+                            name='BackwardRNN{0}'.format(len(self.hidden_layers))
                         )(backward_rnn)
                     ]
                 )
             else:
                 hidden_layer = keras.layers.Concatenate(name='ConcatLayer')(
                     [
-                        keras.layers.CuDNNGRU(
+                        keras.layers.SimpleRNN(
                             units=self.hidden_layers[-1], return_sequences=False, return_state=False,
                             go_backwards=False,
                             kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                            name='ForwardGRU{0}'.format(len(self.hidden_layers))
+                            name='ForwardRNN{0}'.format(len(self.hidden_layers))
                         )(neural_network),
-                        keras.layers.CuDNNGRU(
+                        keras.layers.SimpleRNN(
                             units=self.hidden_layers[-1], return_sequences=False, return_state=False,
                             go_backwards=True,
                             kernel_initializer=keras.initializers.glorot_uniform(seed=self.random_seed),
-                            name='BackwardGRU{0}'.format(len(self.hidden_layers))
+                            name='BackwardRNN{0}'.format(len(self.hidden_layers))
                         )(neural_network)
                     ]
                 )
             output_layer = keras.layers.Dense(
-                units=len(self.classes_), activation='softmax',
+                units=len(self.classes_), activation='softmax', kernel_regularizer=keras.regularizers.l2(self.l2_reg),
                 kernel_initializer=keras.initializers.glorot_normal(seed=self.random_seed)
             )(keras.layers.Dropout(name='Dropout{0}'.format(len(self.hidden_layers) + 1), rate=0.3,
                                    seed=self.random_seed)(hidden_layer))
@@ -239,8 +240,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('timedistr') or \
                             cur_layer.name.lower().startswith('hiddenlayer') or \
-                            cur_layer.name.lower().startswith('backwardgru') or \
-                            cur_layer.name.lower().startswith('forwardgru'):
+                            cur_layer.name.lower().startswith('backwardrnn') or \
+                            cur_layer.name.lower().startswith('forwardrnn'):
                         cur_layer.trainable = False
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=lr_schedule(0.0), clipnorm=10.0),
                                      loss='categorical_crossentropy', metrics=['categorical_accuracy'])
@@ -317,8 +318,8 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
                 for cur_layer in self.recognizer_.layers:
                     if cur_layer.name.lower().startswith('timedistr') or \
                             cur_layer.name.lower().startswith('hiddenlayer') or \
-                            cur_layer.name.lower().startswith('backwardgru') or \
-                            cur_layer.name.lower().startswith('forwardgru'):
+                            cur_layer.name.lower().startswith('backwardrnn') or \
+                            cur_layer.name.lower().startswith('forwardrnn'):
                         cur_layer.trainable = False
             self.recognizer_.compile(optimizer=keras.optimizers.RMSprop(lr=lr_schedule(0.0), clipnorm=10.0),
                                      loss='categorical_crossentropy', metrics=['categorical_accuracy'])
@@ -430,7 +431,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
     def predict_proba(self, X: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
         self.check_params(sampling_frequency=self.sampling_frequency, window_size=self.window_size,
                           shift_size=self.shift_size, batch_size=self.batch_size, max_epochs=self.max_epochs,
-                          patience=self.patience, warm_start=self.warm_start, verbose=self.verbose,
+                          patience=self.patience, warm_start=self.warm_start, verbose=self.verbose, l2_reg=self.l2_reg,
                           random_seed=self.random_seed, layer_level=self.layer_level, hidden_layers=self.hidden_layers,
                           use_augmentation=self.use_augmentation)
         self.check_X(X, 'X')
@@ -489,7 +490,7 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
 
     def get_params(self, deep=True):
         return {'sampling_frequency': self.sampling_frequency, 'window_size': self.window_size,
-                'layer_level': self.layer_level, 'hidden_layers': copy.copy(self.hidden_layers),
+                'layer_level': self.layer_level, 'hidden_layers': copy.copy(self.hidden_layers), 'l2_reg': self.l2_reg,
                 'shift_size': self.shift_size, 'batch_size': self.batch_size, 'max_epochs': self.max_epochs,
                 'patience': self.patience, 'verbose': self.verbose, 'warm_start': self.warm_start,
                 'random_seed': self.random_seed, 'use_augmentation': self.use_augmentation}
@@ -843,6 +844,15 @@ class MobilenetRecognizer(ClassifierMixin, BaseEstimator):
         n_fft = MobilenetRecognizer.get_n_fft(kwargs['sampling_frequency'], kwargs['window_size'])
         if (MobilenetRecognizer.IMAGESIZE[1] // 2) >= (n_fft // 3):
             raise ValueError('`window_size` is too small for specified sampling frequency!')
+        if 'l2_reg' not in kwargs:
+            raise ValueError('`l2_reg` is not specified!')
+        if (not isinstance(kwargs['l2_reg'], float)) and (not isinstance(kwargs['l2_reg'], np.float32)) and \
+                (not isinstance(kwargs['l2_reg'], np.float64)):
+            raise ValueError('`l2_reg` is wrong! Expected `{0}`, got `{1}`.'.format(
+                type(3.5), type(kwargs['l2_reg'])))
+        if kwargs['l2_reg'] <= 0.0:
+            raise ValueError('`l2_reg` is wrong! Expected a positive floating-point value, '
+                             'but {0} is not positive.'.format(kwargs['l2_reg']))
 
     @staticmethod
     def check_X(X: Union[np.ndarray, List[np.ndarray]], X_name: str):
